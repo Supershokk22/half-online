@@ -100,3 +100,13 @@ removido quando ele sai da sala.
 
 Projeto comunitário assinado por **shokk**. Suporte, correções e atualizações
 serão publicados conforme os testes encontrarem problemas.
+
+```text
+ /////   //  //   /////   //  //   //  //
+//       //  //  //   //  // //    // //
+ /////   //////  //   //  ///      ////
+     //  //  //  //   //  // //    // //
+/////    //  //   /////   //  //   //  //
+```
+
+**SHOKK**
