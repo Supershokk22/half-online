@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+logs/
+runtime/
+*.log
+mp_*.txt
+mp_*.json
+build/
+dist/
+*.zip
+*.exe
+_internal/
+*.bak
+.env

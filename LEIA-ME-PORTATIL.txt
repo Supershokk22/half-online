@@ -1,0 +1,22 @@
+HALF SWORD ONLINE — FASE 1
+assinado: shokk
+
+ANTES DE JOGAR (NOS DOIS PCS)
+1. Instale o Tailscale e entre na mesma rede Tailscale.
+2. Execute INSTALAR-MOD-FASE-1.cmd uma vez, com o jogo fechado.
+3. Execute ABRIR-LAUNCHER-PORTATIL.cmd.
+
+HOST
+1. Escolha seu nome e a sala.
+2. Clique em Hospedar sala.
+3. Envie o IP Tailscale mostrado (100.x.x.x) e o nome da sala ao amigo.
+4. Clique em Abrir Half Sword.
+
+AMIGO
+1. Use outro nome, o mesmo nome de sala e cole o IP do host.
+2. Clique em Entrar na sala.
+3. Clique em Abrir Half Sword.
+
+ESTADO ATUAL
+Esta fase sincroniza apenas movimento e rotacao para validar a rede entre os dois PCs.
+Armas, dano, ragdoll, colisao e inventario ainda nao estao sincronizados.
