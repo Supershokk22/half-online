@@ -1,4 +1,4 @@
-"""Launcher de fase 1 para duas instalações independentes do Half Sword."""
+"""Launcher do Half Online para duas instalações independentes — assinado: shokk."""
 from __future__ import annotations
 
 import os

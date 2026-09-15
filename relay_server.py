@@ -1,4 +1,4 @@
-"""Private-room relay for Half Sword Online Real Multiplayer, phase 1.
+"""Private-room relay for Half Online — assinado: shokk.
 
 Run this only on a host you control (for occasional play, a Tailscale IP is
 enough). It forwards compact player snapshots; it never opens or controls a

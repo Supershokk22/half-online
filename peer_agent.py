@@ -1,4 +1,4 @@
-"""Per-PC bridge between the UE4SS file bridge and the private relay."""
+"""Per-PC bridge between the UE4SS file bridge and the private relay — assinado: shokk."""
 from __future__ import annotations
 
 import argparse

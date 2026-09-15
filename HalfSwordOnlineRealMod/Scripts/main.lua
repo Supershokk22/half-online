@@ -1,4 +1,4 @@
--- Half Sword Online Real Multiplayer — rebuild v2
+-- Half Online — rebuild v2 — assinado: shokk
 -- Uses the ClientRestart + 100 ms lifecycle validated by BodyDamageHUD.
 
 local MOD = "HalfSwordOnlineReal"
