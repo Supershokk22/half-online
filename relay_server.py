@@ -179,7 +179,7 @@ async def main() -> None:
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     relay = Relay()
-    async with serve(relay.handler, args.host, args.port, max_size=MAX_MESSAGE_BYTES, ping_interval=15, ping_timeout=15):
+    async with serve(relay.handler, args.host, args.port, max_size=MAX_MESSAGE_BYTES, ping_interval=15, ping_timeout=15, reuse_address=True):
         LOG.info("relay listening on ws://%s:%d", args.host, args.port)
         await asyncio.Future()
 

@@ -16,12 +16,24 @@ do jogo, cada pessoa no seu próprio PC.
 - Controles básicos para a sala do host.
 - Melhorias de estabilidade e organização.
 
-## Como testar
+## Como jogar
 
-1. Instale o projeto e o Tailscale nos dois PCs.
-2. O host abre uma sala e envia o endereço ao amigo.
-3. O amigo entra na mesma sala.
-4. Cada pessoa abre sua própria cópia do jogo.
+### Pré-requisitos (nos dois PCs)
+1. Instale o Tailscale e entre na mesma rede.
+2. Instale Python 3.10+ e `pip install "websockets>=17,<18"`.
+3. Execute `INSTALAR-MOD-FASE-1.ps1` uma vez com o jogo fechado.
+
+### Host (quem cria a sala)
+1. Execute `HOSTEAR.cmd`
+2. Envie seu IP Tailscale (100.x.x.x) pro amigo
+3. Pronto — o jogo abre e o mod carrega sozinho
+
+### Amigo (quem entra)
+1. Execute `CONECTAR.cmd 100.x.x.x` (com o IP do host)
+2. Pronto — conecta ao relay e abre o jogo automaticamente
+
+Ambos vao direto pro hub. Naveguem ate Spar/Training e comecem a lutar.
+O mod sincroniza posicao e rotacao entre os dois jogadores em tempo real.
 
 Leia [CHANGELOG.md](CHANGELOG.md) para acompanhar as mudanças públicas.
 

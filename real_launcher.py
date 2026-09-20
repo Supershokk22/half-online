@@ -11,7 +11,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 ROOT = Path(sys.executable).resolve().parent.parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
-PYTHON = ROOT.parent / "production" / ".venv" / "Scripts" / "python.exe"
+PYTHON = Path(sys.executable) if not getattr(sys, "frozen", False) else ROOT.parent / "production" / ".venv" / "Scripts" / "python.exe"
 LOG_DIR = ROOT / "logs"
 RELAY_PORT = 8790
 BRIDGE_DIR = Path(os.environ.get("LOCALAPPDATA", ".")) / "HalfSwordUE5" / "Saved" / "HalfSwordOnlineReal"
@@ -129,6 +129,12 @@ class RealLauncher(tk.Tk):
         messagebox.showerror("Dependências ausentes", "O Python do launcher não foi encontrado. Copie a pasta completa do projeto.")
         return False
 
+    @staticmethod
+    def _kill_old_processes() -> None:
+        for name in ("HalfSwordUE5-Win64-Shipping.exe", "HalfSwordUE5.exe"):
+            subprocess.run(["taskkill", "/F", "/IM", name], capture_output=True,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+
     def _start(self, arguments: list[str], log_name: str) -> subprocess.Popen[bytes]:
         LOG_DIR.mkdir(exist_ok=True)
         log = (LOG_DIR / log_name).open("ab")
@@ -153,6 +159,7 @@ class RealLauncher(tk.Tk):
         values = self._validate(False)
         if not values or not self._runtime_ok(): return
         name, room, _ = values
+        self._kill_old_processes()
         if not port_open(RELAY_PORT): self.relay = self._start(["relay_server.py", "--host", "0.0.0.0", "--port", str(RELAY_PORT)], "relay.log")
         if self.agent and self.agent.poll() is None: self.agent.terminate()
         self.agent = self._start(["peer_agent.py", "--server", f"ws://127.0.0.1:{RELAY_PORT}", "--room", room, "--name", name, "--role", "host"], "peer-host.log")
@@ -169,6 +176,7 @@ class RealLauncher(tk.Tk):
         values = self._validate(True)
         if not values or not self._runtime_ok(): return
         name, room, address = values
+        self._kill_old_processes()
         if self.agent and self.agent.poll() is None: self.agent.terminate()
         endpoint = address if address.startswith("ws://") else f"ws://{address}:{RELAY_PORT}"
         self.agent = self._start(["peer_agent.py", "--server", endpoint, "--room", room, "--name", name, "--role", "client"], "peer-client.log")
@@ -211,6 +219,7 @@ class RealLauncher(tk.Tk):
         self.status.set("IP Tailscale copiado.")
 
     def launch_game(self) -> None:
+        self._kill_old_processes()
         try: os.startfile("steam://rungameid/2397300")  # type: ignore[attr-defined]
         except OSError as exc: messagebox.showerror("Steam", str(exc))
 
