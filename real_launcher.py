@@ -1,11 +1,13 @@
-"""Launcher do Half Online para duas instalações independentes — assinado: shokk."""
+"""Launcher do Half Online — Cloudflare Tunnel + auto-update — assinado: shokk."""
 from __future__ import annotations
 
 import os
-import json
+import re
 import socket
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 import tkinter as tk
 from tkinter import messagebox, ttk
@@ -15,23 +17,28 @@ PYTHON = Path(sys.executable) if not getattr(sys, "frozen", False) else ROOT.par
 LOG_DIR = ROOT / "logs"
 RELAY_PORT = 8790
 BRIDGE_DIR = Path(os.environ.get("LOCALAPPDATA", ".")) / "HalfSwordUE5" / "Saved" / "HalfSwordOnlineReal"
-TAILSCALE_EXES = (
-    Path(r"C:\Program Files\Tailscale\tailscale.exe"),
-    Path(r"C:\Program Files (x86)\Tailscale\tailscale.exe"),
+CLOUDFLARED_CANDIDATES = (
+    ROOT / "cloudflared.exe",
+    ROOT / "bin" / "cloudflared.exe",
+    Path(r"C:\Users\shokk123\Desktop\cloudflared.exe"),
+    Path(os.environ.get("LOCALAPPDATA", ".")) / "cloudflared.exe",
 )
+TUNNEL_RE = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
 
 
-def tailscale_ip() -> str:
-    executable = next((candidate for candidate in TAILSCALE_EXES if candidate.exists()), None)
-    command = [str(executable)] if executable else ["tailscale"]
-    try:
-        result = subprocess.run([*command, "ip", "-4"], capture_output=True, text=True, timeout=3,
-                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip().splitlines()[0]
-    except (OSError, subprocess.SubprocessError):
-        pass
-    return ""
+def find_cloudflared() -> Path | None:
+    for candidate in CLOUDFLARED_CANDIDATES:
+        if candidate.exists():
+            return candidate
+    for name in ("cloudflared.exe", "cloudflared"):
+        try:
+            result = subprocess.run(["where", name], capture_output=True, text=True, timeout=3,
+                                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            if result.returncode == 0 and result.stdout.strip():
+                return Path(result.stdout.strip().splitlines()[0])
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return None
 
 
 def port_open(port: int) -> bool:
@@ -43,25 +50,29 @@ def port_open(port: int) -> bool:
 class RealLauncher(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("Half Sword Online — Multiplayer Real (Fase 1)")
-        self.geometry("760x520")
-        self.minsize(700, 500)
+        self.title("Half Sword Online")
+        self.geometry("760x580")
+        self.minsize(700, 540)
         self.configure(bg="#11151d")
         self.name = tk.StringVar(value="Jogador")
         self.room = tk.StringVar(value="duelo")
-        self.server = tk.StringVar(value=tailscale_ip())
-        self.status = tk.StringVar(value="Instale Tailscale nos dois PCs antes de começar.")
+        self.server = tk.StringVar()
+        self.status = tk.StringVar(value="Preparando...")
         self.room_status = tk.StringVar(value="Sala: aguardando host")
         self.room_locked = False
         self.agent: subprocess.Popen[bytes] | None = None
         self.relay: subprocess.Popen[bytes] | None = None
+        self.tunnel: subprocess.Popen[bytes] | None = None
+        self.tunnel_url: str = ""
         self._style()
         self._build()
         self.after(500, self._poll_room_status)
         self.protocol("WM_DELETE_WINDOW", self.close)
+        threading.Thread(target=self._auto_update, daemon=True).start()
 
     def _style(self) -> None:
-        style = ttk.Style(self); style.theme_use("clam")
+        style = ttk.Style(self)
+        style.theme_use("clam")
         style.configure(".", background="#11151d", foreground="#e8edf6", font=("Segoe UI", 10))
         style.configure("TFrame", background="#11151d")
         style.configure("Card.TFrame", background="#1b2431")
@@ -69,32 +80,47 @@ class RealLauncher(tk.Tk):
         style.configure("Card.TLabel", background="#1b2431", foreground="#e8edf6")
         style.configure("Hint.TLabel", background="#1b2431", foreground="#a9b6c7")
         style.configure("TEntry", fieldbackground="#0f141d", foreground="#e8edf6", insertcolor="#e8edf6")
-        style.configure("Accent.TButton", background="#d08d31", foreground="#10141a", font=("Segoe UI Semibold", 10), padding=(14, 9))
+        style.configure("Accent.TButton", background="#d08d31", foreground="#10141a",
+                         font=("Segoe UI Semibold", 10), padding=(14, 9))
         style.map("Accent.TButton", background=[("active", "#e8af57")])
         style.configure("TButton", background="#2c3a4e", foreground="#edf2fa", padding=(12, 8))
 
     def _build(self) -> None:
-        root = ttk.Frame(self, padding=22); root.pack(fill="both", expand=True)
+        root = ttk.Frame(self, padding=22)
+        root.pack(fill="both", expand=True)
         ttk.Label(root, text="HALF SWORD ONLINE", style="Title.TLabel").pack(anchor="w")
-        ttk.Label(root, text="Fase 1 — cada jogador abre sua própria Steam e sua própria cópia do jogo.").pack(anchor="w", pady=(2, 16))
-        settings = ttk.Frame(root, style="Card.TFrame", padding=16); settings.pack(fill="x")
-        ttk.Label(settings, text="Dados da sala", style="Card.TLabel", font=("Segoe UI Semibold", 13)).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 10))
+        ttk.Label(root, text="Cada jogador abre sua propria Steam e copia do jogo.",
+                  style="Hint.TLabel").pack(anchor="w", pady=(2, 16))
+
+        settings = ttk.Frame(root, style="Card.TFrame", padding=16)
+        settings.pack(fill="x")
+        ttk.Label(settings, text="Dados da sala", style="Card.TLabel",
+                  font=("Segoe UI Semibold", 13)).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 10))
         ttk.Label(settings, text="Seu nome", style="Hint.TLabel").grid(row=1, column=0, sticky="w")
         ttk.Label(settings, text="Nome da sala", style="Hint.TLabel").grid(row=1, column=1, sticky="w", padx=(10, 0))
-        ttk.Label(settings, text="IP Tailscale do host", style="Hint.TLabel").grid(row=1, column=2, sticky="w", padx=(10, 0))
+        ttk.Label(settings, text="URL do host (polve aqui)", style="Hint.TLabel").grid(row=1, column=2, sticky="w", padx=(10, 0))
         ttk.Entry(settings, textvariable=self.name).grid(row=2, column=0, sticky="ew")
         ttk.Entry(settings, textvariable=self.room).grid(row=2, column=1, sticky="ew", padx=(10, 0))
         ttk.Entry(settings, textvariable=self.server).grid(row=2, column=2, sticky="ew", padx=(10, 0))
-        settings.columnconfigure(0, weight=1); settings.columnconfigure(1, weight=1); settings.columnconfigure(2, weight=1)
+        settings.columnconfigure(0, weight=1)
+        settings.columnconfigure(1, weight=1)
+        settings.columnconfigure(2, weight=2)
 
-        host = ttk.Frame(root, style="Card.TFrame", padding=16); host.pack(fill="x", pady=(12, 0))
-        ttk.Label(host, text="Eu vou hospedar", style="Card.TLabel", font=("Segoe UI Semibold", 13)).pack(anchor="w")
-        ttk.Label(host, text="Inicia o relay privado e conecta seu mod. Envie o IP mostrado para seu amigo.", style="Hint.TLabel").pack(anchor="w", pady=(4, 10))
-        line = ttk.Frame(host, style="Card.TFrame"); line.pack(fill="x")
+        host = ttk.Frame(root, style="Card.TFrame", padding=16)
+        host.pack(fill="x", pady=(12, 0))
+        ttk.Label(host, text="Eu vou hospedar", style="Card.TLabel",
+                  font=("Segoe UI Semibold", 13)).pack(anchor="w")
+        ttk.Label(host, text="Cria um link publico. Envie o link para seu amigo.",
+                  style="Hint.TLabel").pack(anchor="w", pady=(4, 10))
+        line = ttk.Frame(host, style="Card.TFrame")
+        line.pack(fill="x")
         ttk.Button(line, text="Hospedar sala", style="Accent.TButton", command=self.host_room).pack(side="left")
-        ttk.Button(line, text="Copiar endereço", command=self.copy_address).pack(side="left", padx=8)
-        self.host_address = ttk.Label(line, text="", style="Hint.TLabel"); self.host_address.pack(side="left", padx=6)
-        admin = ttk.Frame(host, style="Card.TFrame"); admin.pack(fill="x", pady=(10, 0))
+        ttk.Button(line, text="Copiar link", command=self.copy_address).pack(side="left", padx=8)
+        self.host_address = ttk.Label(line, text="", style="Hint.TLabel", wraplength=400)
+        self.host_address.pack(side="left", padx=6)
+
+        admin = ttk.Frame(host, style="Card.TFrame")
+        admin.pack(fill="x", pady=(10, 0))
         ttk.Label(admin, textvariable=self.room_status, style="Hint.TLabel").pack(side="left")
         self.lock_button = ttk.Button(admin, text="Trancar sala", command=self.toggle_lock, state="disabled")
         self.lock_button.pack(side="right")
@@ -106,35 +132,63 @@ class RealLauncher(tk.Tk):
         self.advanced_button = adv_toggle
 
         line2 = ttk.Frame(self.advanced_frame, style="Card.TFrame")
-        self.spar_clear_button = ttk.Button(line2, text="Limpar bot do Spar", command=lambda: self.game_command("spar clear"))
+        self.spar_clear_button = ttk.Button(line2, text="Limpar bot do Spar",
+                                             command=lambda: self.game_command("spar clear"))
         self.spar_clear_button.pack(side="left")
-        self.bot_remove_button = ttk.Button(line2, text="Remover oponente", command=lambda: self.game_command("bot remove"))
+        self.bot_remove_button = ttk.Button(line2, text="Remover oponente",
+                                             command=lambda: self.game_command("bot remove"))
         self.bot_remove_button.pack(side="left", padx=(8, 0))
-        self.bot_add_button = ttk.Button(line2, text="Adicionar oponente", command=lambda: self.game_command("bot spawn"))
+        self.bot_add_button = ttk.Button(line2, text="Adicionar oponente",
+                                          command=lambda: self.game_command("bot spawn"))
         self.bot_add_button.pack(side="left", padx=(8, 0))
-        ttk.Label(host, text="Painel do host: o avatar do amigo so aparece quando ele entrar.", style="Hint.TLabel").pack(anchor="w", pady=(8, 0))
 
-        client = ttk.Frame(root, style="Card.TFrame", padding=16); client.pack(fill="x", pady=(12, 0))
-        ttk.Label(client, text="Eu vou entrar", style="Card.TLabel", font=("Segoe UI Semibold", 13)).pack(anchor="w")
-        ttk.Label(client, text="Cole o IP Tailscale do host, use o mesmo nome da sala e conecte seu mod.", style="Hint.TLabel").pack(anchor="w", pady=(4, 10))
-        line = ttk.Frame(client, style="Card.TFrame"); line.pack(fill="x")
+        ttk.Label(host, text="Avatar do amigo so aparece quando ele entrar na sala.",
+                  style="Hint.TLabel").pack(anchor="w", pady=(8, 0))
+
+        client = ttk.Frame(root, style="Card.TFrame", padding=16)
+        client.pack(fill="x", pady=(12, 0))
+        ttk.Label(client, text="Eu vou entrar", style="Card.TLabel",
+                  font=("Segoe UI Semibold", 13)).pack(anchor="w")
+        ttk.Label(client, text="Cole o link que o host enviou e clique Conectar.",
+                  style="Hint.TLabel").pack(anchor="w", pady=(4, 10))
+        line = ttk.Frame(client, style="Card.TFrame")
+        line.pack(fill="x")
         ttk.Button(line, text="Entrar na sala", style="Accent.TButton", command=self.join_room).pack(side="left")
         ttk.Button(line, text="Abrir Half Sword", command=self.launch_game).pack(side="left", padx=8)
 
-        bottom = ttk.Frame(root); bottom.pack(fill="x", pady=(18, 0))
+        bottom = ttk.Frame(root)
+        bottom.pack(fill="x", pady=(18, 0))
         ttk.Label(bottom, textvariable=self.status).pack(side="left")
-        ttk.Button(bottom, text="Parar conexão", command=self.stop).pack(side="right")
+        ttk.Button(bottom, text="Parar conexao", command=self.stop).pack(side="right")
         ttk.Label(root, text="assinado: shokk", style="Title.TLabel",
                   font=("Segoe UI Semibold", 10)).pack(anchor="e", pady=(8, 0))
+
+    def _auto_update(self) -> None:
+        git_dir = ROOT / ".git"
+        if not git_dir.exists():
+            return
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(ROOT), "pull", "--ff-only"],
+                capture_output=True, text=True, timeout=30,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            output = result.stdout.strip()
+            if result.returncode == 0 and "Already up to date" not in output and "ja esta" not in output.lower():
+                self.after(0, lambda: self.status.set("Launcher atualizado! Reinicie se necessario."))
+        except (OSError, subprocess.SubprocessError):
+            pass
 
     def _runtime_ok(self) -> bool:
         if getattr(sys, "frozen", False):
             required = (ROOT / "relay_server" / "relay_server.exe", ROOT / "peer_agent" / "peer_agent.exe")
-            if all(item.exists() for item in required): return True
-            messagebox.showerror("Arquivos ausentes", "A pasta portátil está incompleta. Extraia todos os arquivos do ZIP.")
+            if all(item.exists() for item in required):
+                return True
+            messagebox.showerror("Arquivos ausentes", "A pasta esta incompleta. Extraia todos os arquivos do ZIP.")
             return False
-        if PYTHON.exists(): return True
-        messagebox.showerror("Dependências ausentes", "O Python do launcher não foi encontrado. Copie a pasta completa do projeto.")
+        if PYTHON.exists():
+            return True
+        messagebox.showerror("Dependencias ausentes", "Python nao encontrado. Copie a pasta completa do projeto.")
         return False
 
     @staticmethod
@@ -158,39 +212,93 @@ class RealLauncher(tk.Tk):
     def _validate(self, require_server: bool) -> tuple[str, str, str] | None:
         name, room, address = self.name.get().strip(), self.room.get().strip(), self.server.get().strip()
         if not name or not room:
-            messagebox.showwarning("Dados incompletos", "Informe seu nome e a sala."); return None
+            messagebox.showwarning("Dados incompletos", "Informe seu nome e a sala.")
+            return None
         if require_server and not address:
-            messagebox.showwarning("IP ausente", "Cole o IP Tailscale do host."); return None
+            messagebox.showwarning("URL ausente", "Cole o link que o host enviou.")
+            return None
         return name, room, address
+
+    def _start_tunnel(self) -> str:
+        cf = find_cloudflared()
+        if not cf:
+            return ""
+        LOG_DIR.mkdir(exist_ok=True)
+        log_path = LOG_DIR / "tunnel.log"
+        log = log_path.open("w")
+        proc = subprocess.Popen(
+            [str(cf), "tunnel", "--url", f"http://127.0.0.1:{RELAY_PORT}"],
+            stdout=subprocess.PIPE, stderr=log,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        self.tunnel = proc
+        url = ""
+        deadline = time.time() + 15
+        while time.time() < deadline:
+            line = proc.stderr.readline() if proc.stderr else b""
+            if not line:
+                time.sleep(0.3)
+                continue
+            text = line.decode("utf-8", errors="replace")
+            match = TUNNEL_RE.search(text)
+            if match:
+                url = match.group(0)
+                break
+        return url
 
     def host_room(self) -> None:
         values = self._validate(False)
-        if not values or not self._runtime_ok(): return
+        if not values or not self._runtime_ok():
+            return
         name, room, _ = values
         self._kill_old_processes()
-        if not port_open(RELAY_PORT): self.relay = self._start(["relay_server.py", "--host", "0.0.0.0", "--port", str(RELAY_PORT)], "relay.log")
-        if self.agent and self.agent.poll() is None: self.agent.terminate()
-        self.agent = self._start(["peer_agent.py", "--server", f"ws://127.0.0.1:{RELAY_PORT}", "--room", room, "--name", name, "--role", "host"], "peer-host.log")
-        address = tailscale_ip()
-        self.server.set(address)
-        self.host_address.config(text=f"Envie: {address}:{RELAY_PORT}" if address else "Tailscale não conectado")
-        self.lock_button.config(state="normal")
-        self.advanced_button.config(state="normal")
-        self.status.set("Host conectado. Abra Half Sword depois que o mod estiver instalado.")
+        self.stop()
+        if not port_open(RELAY_PORT):
+            self.relay = self._start(
+                ["relay_server.py", "--host", "0.0.0.0", "--port", str(RELAY_PORT)], "relay.log")
+            time.sleep(1)
+        self.status.set("Criando link publico...")
+        self.update_idletasks()
+        tunnel_url = self._start_tunnel()
+        if tunnel_url:
+            self.tunnel_url = tunnel_url
+            ws_url = tunnel_url.replace("https://", "wss://")
+            self.agent = self._start(
+                ["peer_agent.py", "--server", ws_url, "--room", room, "--name", name, "--role", "host"],
+                "peer-host.log")
+            self.host_address.config(text=tunnel_url)
+            self.server.set(tunnel_url)
+            self.lock_button.config(state="normal")
+            self.advanced_button.config(state="normal")
+            self.room_status.set(f"Sala aberta — {name}")
+            self.status.set("Link criado! Envie para seu amigo.")
+        else:
+            self.status.set("Erro ao criar link. Verifique se cloudflared esta instalado.")
 
     def join_room(self) -> None:
         values = self._validate(True)
-        if not values or not self._runtime_ok(): return
+        if not values or not self._runtime_ok():
+            return
         name, room, address = values
         self._kill_old_processes()
-        if self.agent and self.agent.poll() is None: self.agent.terminate()
-        endpoint = address if address.startswith("ws://") else f"ws://{address}:{RELAY_PORT}"
-        self.agent = self._start(["peer_agent.py", "--server", endpoint, "--room", room, "--name", name, "--role", "client"], "peer-client.log")
+        if self.agent and self.agent.poll() is None:
+            self.agent.terminate()
+        if address.startswith("https://"):
+            ws_url = address.replace("https://", "wss://")
+        elif address.startswith("http://"):
+            ws_url = address.replace("http://", "ws://")
+        elif address.startswith("ws://") or address.startswith("wss://"):
+            ws_url = address
+        else:
+            ws_url = f"ws://{address}:{RELAY_PORT}"
+        self.agent = self._start(
+            ["peer_agent.py", "--server", ws_url, "--room", room, "--name", name, "--role", "client"],
+            "peer-client.log")
         self.lock_button.config(state="disabled")
         self.advanced_button.config(state="disabled")
         self.advanced_visible = False
         self.advanced_frame.pack_forget()
-        self.status.set("Tentando entrar. O host precisa estar com a mesma sala aberta.")
+        self.status.set("Conectando... O host precisa estar com a sala aberta.")
 
     def _toggle_advanced(self) -> None:
         self.advanced_visible = not self.advanced_visible
@@ -213,6 +321,7 @@ class RealLauncher(tk.Tk):
     def _poll_room_status(self) -> None:
         status_file = BRIDGE_DIR / "mp_room_status.json"
         try:
+            import json
             payload = json.loads(status_file.read_text(encoding="utf-8"))
             players = payload.get("players", [])
             self.room_locked = bool(payload.get("locked", False))
@@ -225,25 +334,34 @@ class RealLauncher(tk.Tk):
         self.after(500, self._poll_room_status)
 
     def copy_address(self) -> None:
-        address = tailscale_ip()
-        if not address:
-            messagebox.showwarning("Tailscale", "Conecte o Tailscale antes de copiar o endereço."); return
-        self.clipboard_clear(); self.clipboard_append(address)
-        self.status.set("IP Tailscale copiado.")
+        url = self.tunnel_url or self.server.get()
+        if not url:
+            messagebox.showwarning("Link", "Crie a sala primeiro (Hospedar sala).")
+            return
+        self.clipboard_clear()
+        self.clipboard_append(url)
+        self.status.set("Link copiado!")
 
     def launch_game(self) -> None:
         self._kill_old_processes()
-        try: os.startfile("steam://rungameid/2397300")  # type: ignore[attr-defined]
-        except OSError as exc: messagebox.showerror("Steam", str(exc))
+        try:
+            os.startfile("steam://rungameid/2397300")
+        except OSError as exc:
+            messagebox.showerror("Steam", str(exc))
 
     def stop(self) -> None:
-        for process in (self.agent, self.relay):
-            if process and process.poll() is None: process.terminate()
-        self.agent = None; self.relay = None
-        self.status.set("Conexão local encerrada.")
+        for process in (self.agent, self.relay, self.tunnel):
+            if process and process.poll() is None:
+                process.terminate()
+        self.agent = None
+        self.relay = None
+        self.tunnel = None
+        self.tunnel_url = ""
+        self.status.set("Conexao local encerrada.")
 
     def close(self) -> None:
-        self.stop(); self.destroy()
+        self.stop()
+        self.destroy()
 
 
 if __name__ == "__main__":

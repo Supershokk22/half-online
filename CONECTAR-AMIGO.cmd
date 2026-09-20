@@ -1,44 +1,51 @@
 @echo off
-title Half Sword Online — CONECTAR
-setlocal enabledelayedexpansion
-
+title Half Sword Online — Entrar
+color 0A
 echo ============================================
 echo   HALF SWORD ONLINE — ENTRAR NA SALA
 echo ============================================
 echo.
+echo 1. Cole o LINK que o host enviou:
+echo    (ex: https://xxx.trycloudflare.com)
+echo.
+set /p HOST_URL="Link do host: "
+echo.
+echo 2. Seu nome:
+set /p MY_NAME="Nome: "
+echo.
+echo 3. Nome da sala (mesmo do host):
+set /p MY_ROOM="Sala: "
+echo.
 
-set /p HOST_IP="Cole o IP Tailscale do host (100.x.x.x): "
-if "%HOST_IP%"=="" (
-    echo ERRO: IP obrigatorio!
+if "%HOST_URL%"=="" (
+    echo [ERRO] Link vazio!
     pause
     exit /b 1
 )
 
-echo.
-echo IP do host: %HOST_IP%
+echo Conectando ao relay via tunnel...
 echo.
 
-echo [1/4] Matando processos antigos...
-taskkill /F /IM "HalfSwordUE5-Win64-Shipping.exe" >nul 2>&1
-taskkill /F /IM "python.exe" >nul 2>&1
-timeout /t 2 /nobreak >nul
+:: Matar processos antigos
+taskkill /F /IM HalfSwordUE5-Win64-Shipping.exe >nul 2>&1
+taskkill /F /IM HalfSwordUE5.exe >nul 2>&1
+taskkill /F /IM peer_agent.exe >nul 2>&1
 
-echo [2/4] Limpando ponte...
-set BRIDGE=%LOCALAPPDATA%\HalfSwordUE5\Saved\HalfSwordOnlineReal
-if not exist "%BRIDGE%" mkdir "%BRIDGE%"
-echo. > "%BRIDGE%\mp_inbound.txt"
-echo remote remove > "%BRIDGE%\mp_game_control.txt"
+:: Converter https:// para wss://
+set WS_URL=%HOST_URL:https://=wss://%
+set WS_URL=%WS_URL:http://=ws://%
 
-echo [3/4] Conectando ao host...
-start "HS-Client" /B python "%~dp0peer_agent.py" --server "ws://%HOST_IP%:8790" --room duelo --name Amigo --role client
-timeout /t 3 /nobreak >nul
+:: Se nao comeca com ws, adicionar wss://
+echo %WS_URL% | findstr /B "ws://" >nul 2>&1
+if errorlevel 1 set WS_URL=wss://%HOST_URL:https://=%
 
-echo [4/4] Abrindo Half Sword...
+:: Iniciar peer agent
+echo Iniciando peer agent...
+start "PeerAgent" /min python peer_agent.py --server "%WS_URL%" --room "%MY_ROOM%" --name "%MY_NAME%" --role client
+
 echo.
-echo ============================================
-echo   PRONTO! Abra o jogo pela Steam
-echo   e entre em Spar/Training pra jogar.
-echo ============================================
+echo Peer agent rodando!
+echo Agora abra o Half Sword via Steam e entre em Spar/Training.
 echo.
-start steam://rungameid/2397300
+echo Para fechar: feche esta janela.
 pause

@@ -3,42 +3,53 @@
 
 ### O QUE VOCE PRECISA
 1. Half Sword instalado na Steam
-2. Tailscale instalado e conectado (mesma rede do host)
-3. Python 3.10+ (com websockets: `pip install "websockets>=17,<18"`)
-4. Mod HalfSwordOnlineRealMod instalado (rode uma vez: `INSTALAR-MOD-FASE-1.ps1`)
+2. Python 3.10+ (com websockets: `pip install "websockets>=17,<18"`)
+3. Mod HalfSwordOnlineRealMod instalado
 
 ### PASSO A PASSO
-1. Peça o IP Tailscale do host (formato: 100.x.x.x)
-2. Abra o terminal (PowerShell ou CMD)
-3. Navegue até a pasta do projeto:
+
+#### OPCAO A — Pelo Launcher (mais facil)
+1. Abra `real_launcher.py`
+2. Cole o **link** que o host enviou no campo "URL do host"
+3. Coloque seu nome e o nome da sala
+4. Clique **"Entrar na sala"**
+5. Abra o Half Sword pela Steam → Spar/Training
+
+#### OPCAO B — Pelo CMD
+1. Execute `CONECTAR-AMIGO.cmd`
+2. Cole o link do host
+3. Digite seu nome e nome da sala
+4. Abra o Half Sword pela Steam → Spar/Training
+
+#### OPCAO C — Pelo terminal (manual)
+1. Abra PowerShell ou CMD
+2. Navegue ate a pasta do projeto:
    ```
    cd C:\Users\SEU_NOME\Desktop\HalfSwordOnlineGit
    ```
-4. Execute:
+3. Execute (substitua o link):
    ```
-   python peer_agent.py --server ws://IP_DO_HOST:8790 --room duelo --name SEU_NOME --role client
+   python peer_agent.py --server wss://xxx.trycloudflare.com --room duelo --name SEU_NOME --role client
    ```
-   Exemplo:
-   ```
-   python peer_agent.py --server ws://100.79.236.57:8790 --room duelo --name Amigo --role client
-   ```
-5. Abra o Half Sword pela Steam
-6. Navegue: Spar/Training → selecione um mapa → jogue
 
-### O QUE ACONTECE
-- O peer_agent conecta ao relay do host
+### COMO FUNCIONA
+- O host clica "Hospedar sala" no launcher
+- O launcher cria um **link publico** via Cloudflare Tunnel
+- O host envia o link para voce
+- Voce cola o link no seu launcher e conecta
 - O mod dentro do jogo detecta seu personagem
-- A posição é sincronizada entre os dois jogadores em tempo real
-- Quando um sair da sala, o avatar do outro some
+- A posicao e sincronizada entre os dois jogadores em tempo real
 
 ### TROUBLESHOOTING
-- "connection refused": host não está rodando o relay
-- "room not_found": sala não existe, confirme o nome
-- "unsupported_protocol": versão do peer_agent desatualizada, atualize do GitHub
-- Jogo não abre: Steam precisa estar aberta
-- Avatar não aparece: entre no Spar/Training e selecione um mapa
+- "connection refused": host nao esta com a sala aberta
+- "room not_found": sala nao existe, confirme o nome
+- "room_locked": sala esta trancada pelo host
+- "room_full": sala ja tem 2 jogadores
+- Jogo nao abre: Steam precisa estar aberta
+- Avatar nao aparece: entre no Spar/Training e selecione um mapa
+- Link nao funciona: pea ao host para criar a sala novamente
 
 ### ARQUITETURA
 ```
-[Seu Jogo+Mod] ↔ [peer_agent.py] ↔ [relay_server.py (host)] ↔ [peer_agent.py (host)] ↔ [Jogo Host+Mod]
+[Seu Jogo+Mod] <-> [peer_agent.py] <-> [Cloudflare Tunnel] <-> [relay_server.py (host)] <-> [Jogo Host+Mod]
 ```
