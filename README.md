@@ -1,7 +1,11 @@
-# Half Online
+# Half Online — v2.0 PRO
 
 > Projeto comunitário para partidas privadas entre amigos.
 > **Assinado: shokk**
+
+---
+
+## ⚔ VERSÃO 2.0 PRO ⚔
 
 ## Sobre
 
@@ -9,44 +13,43 @@ Half Online é um projeto público, não oficial e em desenvolvimento. A propost
 é oferecer uma forma simples de jogar em sala privada com duas cópias legítimas
 do jogo, cada pessoa no seu próprio PC.
 
-## Atualização atual
+## O que há de novo na v2.0 PRO
 
-- Sala privada para duas pessoas.
-- Presença do outro jogador no cenário.
-- Controles básicos para a sala do host.
-- Melhorias de estabilidade e organização.
+- Criação de sala pública via Cloudflare Tunnel funcionando corretamente
+- Relay rodando in-process — sem dependência de subprocesso externo
+- UI renovada: status em tempo real, link gerado automaticamente
+- Correção de bug crítico onde o link público nunca era gerado
+- Estabilidade geral e organização do código
 
 ## Como jogar
 
 ### Pré-requisitos (nos dois PCs)
-1. Instale o Tailscale e entre na mesma rede.
-2. Instale Python 3.10+ e `pip install "websockets>=17,<18"`.
-3. Execute `INSTALAR-MOD-FASE-1.ps1` uma vez com o jogo fechado.
+1. Instale Python 3.10+ e execute: `pip install "websockets>=17,<18"`
+2. Execute `INSTALAR-MOD-FASE-1.ps1` uma vez com o jogo fechado
+3. Tenha o `cloudflared.exe` na pasta do projeto ou na Desktop
 
 ### Host (quem cria a sala)
-1. Execute `HOSTEAR.cmd`
-2. Envie seu IP Tailscale (100.x.x.x) pro amigo
-3. Pronto — o jogo abre e o mod carrega sozinho
+1. Execute `real_launcher.py` (ou `HOSTEAR.cmd`)
+2. Clique **Hospedar sala** — o link público aparece em segundos
+3. Envie o link para o amigo
 
 ### Amigo (quem entra)
-1. Execute `CONECTAR.cmd 100.x.x.x` (com o IP do host)
-2. Pronto — conecta ao relay e abre o jogo automaticamente
+1. Execute `real_launcher.py`
+2. Cole o link no campo **URL do host**
+3. Clique **Entrar na sala**
 
-Ambos vao direto pro hub. Naveguem ate Spar/Training e comecem a lutar.
-O mod sincroniza posicao e rotacao entre os dois jogadores em tempo real.
-
-Leia [CHANGELOG.md](CHANGELOG.md) para acompanhar as mudanças públicas.
+Ambos abrem o Half Sword pela Steam, vão pro Spar/Training e começam a lutar.
+O mod sincroniza posição e rotação em tempo real.
 
 ## Aviso
 
 Projeto independente e não oficial. Use apenas cópias legítimas do jogo e uma
-rede privada entre pessoas de confiança. Recursos continuam em teste e recebem
-correções conforme a comunidade reporta problemas.
+rede privada entre pessoas de confiança.
 
 ## Suporte
 
-Abra uma issue com uma descrição curta do problema, versão do jogo e os passos
-para reproduzir — sem compartilhar dados pessoais.
+Abra uma issue com descrição curta do problema, versão do jogo e passos para
+reproduzir.
 
 ```text
  /////   //  //   /////   //  //   //  //
@@ -56,4 +59,4 @@ para reproduzir — sem compartilhar dados pessoais.
 /////    //  //   /////   //  //   //  //
 ```
 
-**SHOKK**
+**SHOKK — v2.0 PRO**

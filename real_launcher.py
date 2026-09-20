@@ -147,7 +147,7 @@ class RealLauncher(tk.Tk):
         root = ttk.Frame(self, padding=22)
         root.pack(fill="both", expand=True)
 
-        ttk.Label(root, text="HALF SWORD ONLINE", style="Title.TLabel").pack(anchor="w")
+        ttk.Label(root, text="HALF SWORD ONLINE  v2.0 PRO", style="Title.TLabel").pack(anchor="w")
         ttk.Label(root,
                   text="Cada jogador abre sua propria Steam e copia do jogo.",
                   style="Hint.TLabel").pack(anchor="w", pady=(2, 16))
