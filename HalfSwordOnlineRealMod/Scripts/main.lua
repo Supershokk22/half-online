@@ -1,8 +1,7 @@
--- Half Online — rebuild v8 — assinado: shokk
--- Auto-enter arena + multiplayer bridge (no menu needed).
--- Fix: detect NewBlueprint_C (hub/tavern) OR Willie_BP_C (arena/spar)
+-- Half Online — v9 clean — assinado: shokk
+-- Multiplayer bridge: pawn detection + position sync. No spam.
 
-local MOD = "HalfSwordOnlineReal"
+local MOD = "HalfOnline"
 local REMOTE_CLASS_PATH = "/Game/Character/Blueprints/Willie_BP.Willie_BP_C"
 local ALT_REMOTE_CLASS = "/Game/Maps/Map_Hub_Tavern_Frank.NewBlueprint_C"
 local ARENA_MAP = "/Game/Maps/Arenas/Map_Arena_Cellar"
@@ -73,7 +72,6 @@ local function spawnRemoteAvatar(localPawn, packet)
         local class = getRemoteClass()
         if not valid(world) or not valid(class) then
             state.spawnRequested = false
-            log("Remote avatar class or world unavailable")
             return
         end
         local transform = {
@@ -85,10 +83,9 @@ local function spawnRemoteAvatar(localPawn, packet)
         if ok and valid(actor) then
             state.remotePawn = actor
             state.spawnRequested = false
-            log("Remote avatar spawned - room connected")
+            log("Adversario conectado!")
         else
             state.spawnRequested = false
-            log("Remote avatar spawn failed")
         end
     end)
 end
@@ -101,12 +98,12 @@ local function spawnPracticeOpponent(localPawn)
     if valid(state.botPawn) or not valid(localPawn) then return end
     ExecuteInGameThread(function()
         local world, class = localPawn:GetWorld(), getRemoteClass()
-        if not valid(world) or not valid(class) then log("Practice opponent class unavailable"); return end
+        if not valid(world) or not valid(class) then return end
         local here = localPawn:K2_GetActorLocation()
         local rotation = localPawn:K2_GetActorRotation()
         local transform = { Translation = { X = here.X + 260, Y = here.Y, Z = here.Z }, Rotation = rotation, Scale3D = { X = 1, Y = 1, Z = 1 } }
         local ok, actor = pcall(function() return world:SpawnActor(class, transform, {}) end)
-        if ok and valid(actor) then state.botPawn = actor; log("Practice opponent added by host") end
+        if ok and valid(actor) then state.botPawn = actor end
     end)
 end
 
@@ -123,7 +120,7 @@ local function clearNativeSparOpponents(localPawn)
             if not playerControlled then destroyActor(actor); removed = removed + 1 end
         end
     end
-    log("Native opponents removed: " .. tostring(removed))
+    if removed > 0 then log("Bots removidos: " .. removed) end
 end
 
 local function applyGameControl(localPawn)
@@ -135,11 +132,7 @@ local function applyGameControl(localPawn)
     state.lastGameControl = command
     if command == "remote remove" then
         destroyActor(state.remotePawn); state.remotePawn = nil; state.spawnRequested = false; state.lastInbound = ""
-        log("Remote avatar removed - room is empty")
-    elseif command == "bot spawn" then
-        spawnPracticeOpponent(localPawn)
-    elseif command == "bot remove" then
-        destroyActor(state.botPawn); state.botPawn = nil; log("Practice opponent removed by host")
+        log("Adversario saiu da sala")
     elseif command == "spar clear" then
         clearNativeSparOpponents(localPawn)
     end
@@ -161,8 +154,7 @@ local function updateLoop()
         writeOutbound(pawn)
         applyGameControl(pawn)
         applyInbound(pawn)
-        local now = os.clock()
-        if now - state.lastStatus > 5 then state.lastStatus = now; log("Room bridge active - assinado: shokk") end
+        clearNativeSparOpponents(pawn)
     end
     ExecuteWithDelay(100, updateLoop)
 end
@@ -171,36 +163,17 @@ local function beginRound()
     if state.running then return end
     state.running = true
     state.remotePawn, state.botPawn, state.spawnRequested, state.lastInbound, state.lastGameControl = nil, nil, false, "", ""
-    log("Player pawn detected — arena loaded, starting multiplayer bridge")
-    ExecuteWithDelay(1200, function() log("Arena ready; multiplayer bridge starting"); updateLoop() end)
-end
-
-local function tryLoadArena()
-    if state.running then return end
-    local controller, pawn = getPlayerPawn()
-    if pawn then
-        state.pawnStableCount = state.pawnStableCount + 1
-        if state.pawnStableCount >= 2 then
-            log("Pawn stable — starting round (attempt " .. state.loadAttempts .. ")")
-            beginRound()
-            return
-        end
-    else
-        state.pawnStableCount = 0
-    end
-
-    state.loadAttempts = state.loadAttempts + 1
-    if state.loadAttempts > 60 then
-        log("GAVE UP after 60 attempts — player must navigate menu manually")
-        return
-    end
-
-    if state.loadAttempts % 10 == 1 then
-        log("Attempt " .. state.loadAttempts .. " — no player pawn yet, sending console commands to load arena")
-    end
-
+    log("Multiplayer ativo! Limpando bots...")
     ExecuteInGameThread(function()
-        pcall(function() ExecuteConsoleCommand("open " .. ARENA_MAP) end)
+        local _, pawn = getPlayerPawn()
+        if pawn then clearNativeSparOpponents(pawn) end
+    end)
+    ExecuteWithDelay(500, function()
+        ExecuteInGameThread(function()
+            local _, pawn = getPlayerPawn()
+            if pawn then clearNativeSparOpponents(pawn) end
+        end)
+        updateLoop()
     end)
 end
 
@@ -214,14 +187,4 @@ RegisterHook("/Script/Engine.PlayerController:ClientRestart", function() Execute
     end
 end) end)
 
-ExecuteWithDelay(3000, function()
-    log("Auto-load started — trying open command + pawn detection every 2s")
-    local function autoLoadLoop()
-        if state.running then return end
-        tryLoadArena()
-        if not state.running then ExecuteWithDelay(2000, autoLoadLoop) end
-    end
-    autoLoadLoop()
-end)
-
-log("Rebuild v8 loaded — auto-entering arena (no menu). assinado: shokk")
+log("Mod carregado — entre na sala via menu")

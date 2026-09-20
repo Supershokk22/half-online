@@ -98,13 +98,21 @@ class RealLauncher(tk.Tk):
         ttk.Label(admin, textvariable=self.room_status, style="Hint.TLabel").pack(side="left")
         self.lock_button = ttk.Button(admin, text="Trancar sala", command=self.toggle_lock, state="disabled")
         self.lock_button.pack(side="right")
-        self.bot_remove_button = ttk.Button(admin, text="Remover oponente", command=lambda: self.game_command("bot remove"), state="disabled")
-        self.bot_remove_button.pack(side="right", padx=(0, 8))
-        self.bot_add_button = ttk.Button(admin, text="Adicionar oponente", command=lambda: self.game_command("bot spawn"), state="disabled")
-        self.bot_add_button.pack(side="right", padx=(0, 8))
-        self.spar_clear_button = ttk.Button(admin, text="Limpar bot do Spar", command=lambda: self.game_command("spar clear"), state="disabled")
-        self.spar_clear_button.pack(side="right", padx=(0, 8))
-        ttk.Label(host, text="Painel do host: oponente de treino parado; o avatar do amigo só aparece quando ele entrar.", style="Hint.TLabel").pack(anchor="w", pady=(8, 0))
+
+        self.advanced_visible = False
+        self.advanced_frame = ttk.Frame(host, style="Card.TFrame")
+        adv_toggle = ttk.Button(admin, text="Controles avancados", command=self._toggle_advanced, state="disabled")
+        adv_toggle.pack(side="right", padx=(0, 8))
+        self.advanced_button = adv_toggle
+
+        line2 = ttk.Frame(self.advanced_frame, style="Card.TFrame")
+        self.spar_clear_button = ttk.Button(line2, text="Limpar bot do Spar", command=lambda: self.game_command("spar clear"))
+        self.spar_clear_button.pack(side="left")
+        self.bot_remove_button = ttk.Button(line2, text="Remover oponente", command=lambda: self.game_command("bot remove"))
+        self.bot_remove_button.pack(side="left", padx=(8, 0))
+        self.bot_add_button = ttk.Button(line2, text="Adicionar oponente", command=lambda: self.game_command("bot spawn"))
+        self.bot_add_button.pack(side="left", padx=(8, 0))
+        ttk.Label(host, text="Painel do host: o avatar do amigo so aparece quando ele entrar.", style="Hint.TLabel").pack(anchor="w", pady=(8, 0))
 
         client = ttk.Frame(root, style="Card.TFrame", padding=16); client.pack(fill="x", pady=(12, 0))
         ttk.Label(client, text="Eu vou entrar", style="Card.TLabel", font=("Segoe UI Semibold", 13)).pack(anchor="w")
@@ -167,9 +175,7 @@ class RealLauncher(tk.Tk):
         self.server.set(address)
         self.host_address.config(text=f"Envie: {address}:{RELAY_PORT}" if address else "Tailscale não conectado")
         self.lock_button.config(state="normal")
-        self.bot_add_button.config(state="normal")
-        self.bot_remove_button.config(state="normal")
-        self.spar_clear_button.config(state="normal")
+        self.advanced_button.config(state="normal")
         self.status.set("Host conectado. Abra Half Sword depois que o mod estiver instalado.")
 
     def join_room(self) -> None:
@@ -181,10 +187,17 @@ class RealLauncher(tk.Tk):
         endpoint = address if address.startswith("ws://") else f"ws://{address}:{RELAY_PORT}"
         self.agent = self._start(["peer_agent.py", "--server", endpoint, "--room", room, "--name", name, "--role", "client"], "peer-client.log")
         self.lock_button.config(state="disabled")
-        self.bot_add_button.config(state="disabled")
-        self.bot_remove_button.config(state="disabled")
-        self.spar_clear_button.config(state="disabled")
+        self.advanced_button.config(state="disabled")
+        self.advanced_visible = False
+        self.advanced_frame.pack_forget()
         self.status.set("Tentando entrar. O host precisa estar com a mesma sala aberta.")
+
+    def _toggle_advanced(self) -> None:
+        self.advanced_visible = not self.advanced_visible
+        if self.advanced_visible:
+            self.advanced_frame.pack(fill="x", pady=(6, 0))
+        else:
+            self.advanced_frame.pack_forget()
 
     def toggle_lock(self) -> None:
         BRIDGE_DIR.mkdir(parents=True, exist_ok=True)
