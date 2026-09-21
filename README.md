@@ -25,7 +25,7 @@ do jogo, cada pessoa no seu próprio PC.
 ## Como jogar
 
 ### Pré-requisitos (nos dois PCs)
-1. Instale Python 3.10+ e execute: `pip install "websockets>=17,<18"`
+1. Instale Python 3.10+ e execute: `python -m pip install "websockets>=15,<18"`
 2. Execute `INSTALAR-MOD-FASE-1.ps1` uma vez com o jogo fechado
 3. Tenha o `cloudflared.exe` na pasta do projeto ou na Desktop
 
@@ -51,6 +51,9 @@ rede privada entre pessoas de confiança.
 
 Abra uma issue com descrição curta do problema, versão do jogo e passos para
 reproduzir.
+
+Para instalação assistida, conexão dos dois PCs e diagnóstico da sincronização,
+consulte [GUIA-PARA-IA.md](GUIA-PARA-IA.md).
 
 ```text
  /////   //  //   /////   //  //   //  //

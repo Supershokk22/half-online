@@ -116,7 +116,7 @@ async def run(args: argparse.Namespace) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Half Sword Online Real Multiplayer peer bridge")
-    parser.add_argument("--server", required=True, help="ws://TAILSCALE-HOST-IP:8790")
+    parser.add_argument("--server", required=True, help="URL WebSocket do relay: ws:// ou wss://")
     parser.add_argument("--room", required=True)
     parser.add_argument("--name", required=True)
     parser.add_argument("--role", choices=("host", "client"), required=True)
