@@ -105,7 +105,7 @@ class RealLauncher(tk.Tk):
         self.title("Half Sword Online")
         self.geometry("1080x660")
         self.minsize(920, 600)
-        self.configure(bg="#0b0f16")
+        self.configure(bg="#120f0f")
 
         self.name   = tk.StringVar(value="Jogador")
         self.room   = tk.StringVar(value="duelo")
@@ -130,26 +130,27 @@ class RealLauncher(tk.Tk):
     def _style(self) -> None:
         s = ttk.Style(self)
         s.theme_use("clam")
-        s.configure(".", background="#0b0f16", foreground="#e8edf6", font=("Segoe UI", 10))
-        s.configure("TFrame",       background="#0b0f16")
-        s.configure("Card.TFrame",  background="#141c28")
-        s.configure("Title.TLabel", background="#0b0f16", foreground="#f2c768",
-                    font=("Segoe UI Semibold", 23))
-        s.configure("Card.TLabel",  background="#141c28", foreground="#edf2fb")
-        s.configure("Hint.TLabel",  background="#141c28", foreground="#9eacbf")
-        s.configure("Status.TLabel", background="#0b0f16", foreground="#9eacbf")
-        s.configure("TEntry", fieldbackground="#0d131d", foreground="#edf2fb",
-                    insertcolor="#edf2fb", bordercolor="#314155", lightcolor="#314155")
-        s.configure("Accent.TButton", background="#d08d31", foreground="#10141a",
-                    font=("Segoe UI Semibold", 10), padding=(14, 10))
-        s.map("Accent.TButton", background=[("active", "#e8af57")])
-        s.configure("TButton", background="#26364b", foreground="#edf2fa", padding=(12, 9))
-        s.map("TButton", background=[("active", "#344861")])
-        s.configure("Rooms.Treeview", background="#0d131d", fieldbackground="#0d131d",
-                    foreground="#e8edf6", rowheight=38, bordercolor="#26364b")
-        s.map("Rooms.Treeview", background=[("selected", "#314b6e")],
-              foreground=[("selected", "#ffffff")])
-        s.configure("Rooms.Treeview.Heading", background="#1b2737", foreground="#f2c768",
+        # Paleta "forja real": escuro quente, metal envelhecido e pergaminho.
+        s.configure(".", background="#120f0f", foreground="#eee5d2", font=("Segoe UI", 10))
+        s.configure("TFrame",        background="#120f0f")
+        s.configure("Card.TFrame",   background="#211a1a")
+        s.configure("Title.TLabel",  background="#120f0f", foreground="#d8b26a",
+                    font=("Georgia", 24, "bold"))
+        s.configure("Card.TLabel",   background="#211a1a", foreground="#f4ecda")
+        s.configure("Hint.TLabel",   background="#211a1a", foreground="#b8ac99")
+        s.configure("Status.TLabel", background="#120f0f", foreground="#b8ac99")
+        s.configure("TEntry", fieldbackground="#171213", foreground="#f4ecda",
+                    insertcolor="#d8b26a", bordercolor="#5b4937", lightcolor="#5b4937")
+        s.configure("Accent.TButton", background="#a47735", foreground="#160f09",
+                    font=("Segoe UI Semibold", 10), padding=(15, 10))
+        s.map("Accent.TButton", background=[("active", "#cfaa62"), ("pressed", "#805927")])
+        s.configure("TButton", background="#3a2929", foreground="#f1e7d3", padding=(12, 9))
+        s.map("TButton", background=[("active", "#563737"), ("pressed", "#2a1b1b")])
+        s.configure("Rooms.Treeview", background="#171213", fieldbackground="#171213",
+                    foreground="#eadfca", rowheight=40, bordercolor="#4d3a2f")
+        s.map("Rooms.Treeview", background=[("selected", "#684127")],
+              foreground=[("selected", "#fff8e9")])
+        s.configure("Rooms.Treeview.Heading", background="#30231f", foreground="#d8b26a",
                     font=("Segoe UI Semibold", 9), relief="flat")
 
     # ── layout ────────────────────────────────────────────────────────────────
@@ -160,7 +161,7 @@ class RealLauncher(tk.Tk):
         header = ttk.Frame(root)
         header.pack(fill="x", pady=(0, 18))
         ttk.Label(header, text="HALF ONLINE", style="Title.TLabel").pack(side="left")
-        ttk.Label(header, text="LOBBY  •  v2.0 PRO", style="Status.TLabel",
+        ttk.Label(header, text="PRIVATE ARENAS  •  v2.0 PRO", style="Status.TLabel",
                   font=("Segoe UI Semibold", 10)).pack(side="left", padx=(12, 0), pady=(8, 0))
         ttk.Button(header, text="Abrir Half Sword", command=self.launch_game).pack(side="right")
 
@@ -172,9 +173,9 @@ class RealLauncher(tk.Tk):
 
         left = ttk.Frame(body, style="Card.TFrame", padding=18)
         left.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
-        ttk.Label(left, text="CONTROLE DA SALA", style="Card.TLabel",
+        ttk.Label(left, text="COMANDO DA ARENA", style="Card.TLabel",
                   font=("Segoe UI Semibold", 13)).pack(anchor="w")
-        ttk.Label(left, text="Crie uma sala privada ou entre por convite.",
+        ttk.Label(left, text="Forje uma arena privada ou entre por convite.",
                   style="Hint.TLabel").pack(anchor="w", pady=(3, 16))
 
         self._field(left, "SEU NOME", self.name)
@@ -190,7 +191,7 @@ class RealLauncher(tk.Tk):
 
         active = ttk.Frame(left, style="Card.TFrame", padding=12)
         active.pack(fill="x", pady=(16, 0))
-        ttk.Label(active, text="SALA ATIVA", style="Card.TLabel",
+        ttk.Label(active, text="ARENA ATIVA", style="Card.TLabel",
                   font=("Segoe UI Semibold", 10)).pack(anchor="w")
         ttk.Label(active, textvariable=self.room_status, style="Hint.TLabel",
                   wraplength=330).pack(anchor="w", pady=(5, 0))
@@ -204,16 +205,16 @@ class RealLauncher(tk.Tk):
         right.grid(row=0, column=1, sticky="nsew")
         top = ttk.Frame(right, style="Card.TFrame")
         top.pack(fill="x")
-        ttk.Label(top, text="SALAS", style="Card.TLabel", font=("Segoe UI Semibold", 13)).pack(side="left")
+        ttk.Label(top, text="ARENAS DISPONÍVEIS", style="Card.TLabel", font=("Segoe UI Semibold", 13)).pack(side="left")
         ttk.Button(top, text="Atualizar", command=self.refresh_rooms).pack(side="right")
-        ttk.Label(right, text="Salas desta sessao e convites salvos neste PC.",
+        ttk.Label(right, text="Sessão atual e convites guardados neste PC.",
                   style="Hint.TLabel").pack(anchor="w", pady=(3, 14))
 
         table = ttk.Frame(right, style="Card.TFrame")
         table.pack(fill="both", expand=True)
         self.rooms_view = ttk.Treeview(table, style="Rooms.Treeview", show="headings",
                                        columns=("room", "owner", "state"), selectmode="browse")
-        self.rooms_view.heading("room", text="SALA")
+        self.rooms_view.heading("room", text="ARENA")
         self.rooms_view.heading("owner", text="HOST / CONVITE")
         self.rooms_view.heading("state", text="STATUS")
         self.rooms_view.column("room", width=145, minwidth=110, anchor="w")
