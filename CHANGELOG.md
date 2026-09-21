@@ -4,6 +4,8 @@
 
 - Ajustes de estabilidade para salas privadas.
 - Melhorias no fluxo de host e entrada de jogador.
+- Correção de desconexões causadas por bloqueio temporário de arquivos no Windows.
+- Avatar remoto agora preserva a inicialização de animação, colisão e física do modo Spar.
 - Organização inicial da documentação pública.
 
 ## Nota

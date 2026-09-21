@@ -7,7 +7,7 @@ local ALT_REMOTE_CLASS = "/Game/Maps/Map_Hub_Tavern_Frank.NewBlueprint_C"
 local ARENA_MAP = "/Game/Maps/Arenas/Map_Arena_Cellar"
 local base = os.getenv("LOCALAPPDATA")
 local BRIDGE = (base or ".") .. "\\HalfSwordUE5\\Saved\\HalfSwordOnlineReal"
-local state = { running = false, remotePawn = nil, botPawn = nil, spawnRequested = false, lastInbound = "", lastGameControl = "", lastStatus = 0, loadAttempts = 0, pawnStableCount = 0 }
+local state = { running = false, remotePawn = nil, botPawn = nil, spawnRequested = false, lastInbound = "", lastGameControl = "", lastStatus = 0, loadAttempts = 0, pawnStableCount = 0, lastRemotePosition = nil, lastRemoteTime = nil }
 
 local function log(message) print("[" .. MOD .. "] " .. message) end
 
@@ -64,30 +64,41 @@ local function getRemoteClass()
     return nil
 end
 
-local function spawnRemoteAvatar(localPawn, packet)
-    if state.spawnRequested or not valid(localPawn) then return end
-    state.spawnRequested = true
-    ExecuteInGameThread(function()
-        local world = localPawn:GetWorld()
-        local class = getRemoteClass()
-        if not valid(world) or not valid(class) then
-            state.spawnRequested = false
-            return
+local function findInitializedOpponent(localPawn)
+    local candidates = FindAllOf("Willie_BP_C") or {}
+    local alt = FindAllOf("NewBlueprint_C")
+    if alt then for _, actor in ipairs(alt) do table.insert(candidates, actor) end end
+    for _, actor in ipairs(candidates) do
+        if valid(actor) and actor ~= localPawn and actor ~= state.botPawn then
+            local playerControlled = false
+            pcall(function() playerControlled = actor:IsPlayerControlled() end)
+            if not playerControlled then return actor end
         end
-        local transform = {
-            Translation = { X = packet[1], Y = packet[2], Z = packet[3] },
-            Rotation = { Pitch = packet[4], Yaw = packet[5], Roll = packet[6] },
-            Scale3D = { X = 1, Y = 1, Z = 1 },
-        }
-        local ok, actor = pcall(function() return world:SpawnActor(class, transform, {}) end)
-        if ok and valid(actor) then
-            state.remotePawn = actor
-            state.spawnRequested = false
-            log("Adversario conectado!")
-        else
-            state.spawnRequested = false
+    end
+    return nil
+end
+
+local function claimRemoteAvatar(localPawn)
+    if valid(state.remotePawn) or not valid(localPawn) then return valid(state.remotePawn) end
+    local actor = findInitializedOpponent(localPawn)
+    if not valid(actor) then return false end
+
+    -- Reuse the opponent created by Spar. Its skeletal mesh, animation blueprint,
+    -- collision and physics have already passed through the game's normal setup.
+    -- A raw SpawnActor here is what produced the frozen T-pose proxy.
+    pcall(function()
+        local controller = actor.Controller
+        if valid(controller) then
+            pcall(function() controller:StopMovement() end)
+            pcall(function() controller:UnPossess() end)
         end
+        actor:SetActorEnableCollision(true)
     end)
+    state.remotePawn = actor
+    state.lastRemotePosition = nil
+    state.lastRemoteTime = nil
+    log("Adversario conectado com animacao e fisica nativas!")
+    return true
 end
 
 local function destroyActor(actor)
@@ -141,10 +152,32 @@ end
 local function applyInbound(localPawn)
     local packet = parseInbound()
     if not packet then return end
-    if not valid(state.remotePawn) then spawnRemoteAvatar(localPawn, packet); return end
+    if not valid(state.remotePawn) and not claimRemoteAvatar(localPawn) then
+        -- Keep the packet eligible for a retry while the Spar pawn finishes loading.
+        state.lastInbound = ""
+        return
+    end
+    local now = os.clock()
+    if state.lastRemotePosition and state.lastRemoteTime then
+        local dt = now - state.lastRemoteTime
+        if dt > 0.001 then
+            local velocity = {
+                X = (packet[1] - state.lastRemotePosition[1]) / dt,
+                Y = (packet[2] - state.lastRemotePosition[2]) / dt,
+                Z = (packet[3] - state.lastRemotePosition[3]) / dt,
+            }
+            pcall(function()
+                if state.remotePawn.CharacterMovement then
+                    state.remotePawn.CharacterMovement.Velocity = velocity
+                end
+            end)
+        end
+    end
     pcall(function()
-        state.remotePawn:K2_SetActorLocationAndRotation({ X = packet[1], Y = packet[2], Z = packet[3] }, { Pitch = packet[4], Yaw = packet[5], Roll = packet[6] }, false, {}, true)
+        state.remotePawn:K2_SetActorLocationAndRotation({ X = packet[1], Y = packet[2], Z = packet[3] }, { Pitch = packet[4], Yaw = packet[5], Roll = packet[6] }, true, {}, false)
     end)
+    state.lastRemotePosition = { packet[1], packet[2], packet[3] }
+    state.lastRemoteTime = now
 end
 
 local function updateLoop()
@@ -163,16 +196,9 @@ local function beginRound()
     if state.running then return end
     state.running = true
     state.remotePawn, state.botPawn, state.spawnRequested, state.lastInbound, state.lastGameControl = nil, nil, false, "", ""
-    log("Multiplayer ativo! Limpando bots...")
-    ExecuteInGameThread(function()
-        local _, pawn = getPlayerPawn()
-        if pawn then clearNativeSparOpponents(pawn) end
-    end)
+    state.lastRemotePosition, state.lastRemoteTime = nil, nil
+    log("Multiplayer ativo! Aguardando avatar remoto...")
     ExecuteWithDelay(500, function()
-        ExecuteInGameThread(function()
-            local _, pawn = getPlayerPawn()
-            if pawn then clearNativeSparOpponents(pawn) end
-        end)
         updateLoop()
     end)
 end

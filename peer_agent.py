@@ -13,6 +13,41 @@ from websockets.asyncio.client import connect
 PROTOCOL = 1
 
 
+def write_bridge_text(path: Path, content: str) -> bool:
+    """Write a tiny bridge file without dropping the socket on Windows locks.
+
+    UE4SS/Lua may briefly hold the destination without FILE_SHARE_DELETE, which
+    makes Path.replace() raise WinError 5. Retry the atomic path first, then use
+    a direct overwrite; a missed frame is preferable to disconnecting the peer.
+    """
+    temp = path.with_suffix(".tmp")
+    for _ in range(4):
+        try:
+            temp.write_text(content, encoding="utf-8")
+            temp.replace(path)
+            return True
+        except PermissionError:
+            time.sleep(0.01)
+        except OSError as exc:
+            logging.debug("atomic bridge write failed for %s: %s", path.name, exc)
+            break
+    for _ in range(4):
+        try:
+            path.write_text(content, encoding="utf-8")
+            try:
+                temp.unlink(missing_ok=True)
+            except OSError:
+                pass
+            return True
+        except PermissionError:
+            time.sleep(0.01)
+        except OSError as exc:
+            logging.warning("bridge write skipped for %s: %s", path.name, exc)
+            return False
+    logging.warning("bridge write skipped for %s: file remained locked", path.name)
+    return False
+
+
 def parse_state(raw: str) -> list[float] | None:
     pieces = raw.strip().split()
     if len(pieces) != 7 or pieces[0] != "state":
@@ -25,15 +60,11 @@ def parse_state(raw: str) -> list[float] | None:
 
 def write_inbound(path: Path, state: list[float]) -> None:
     content = "state " + " ".join(f"{value:.4f}" for value in state) + "\n"
-    temp = path.with_suffix(".tmp")
-    temp.write_text(content, encoding="utf-8")
-    temp.replace(path)
+    write_bridge_text(path, content)
 
 
 def write_room_status(path: Path, message: dict[str, object]) -> None:
-    temp = path.with_suffix(".tmp")
-    temp.write_text(json.dumps(message, separators=(",", ":")), encoding="utf-8")
-    temp.replace(path)
+    write_bridge_text(path, json.dumps(message, separators=(",", ":")))
 
 
 def clear_file(path: Path) -> None:
@@ -46,9 +77,7 @@ def clear_file(path: Path) -> None:
 
 def request_game_action(path: Path, action: str) -> None:
     """Small host/client-to-mod command; the UE4SS mod consumes it safely."""
-    temp = path.with_suffix(".tmp")
-    temp.write_text(action + "\n", encoding="utf-8")
-    temp.replace(path)
+    write_bridge_text(path, action + "\n")
 
 
 async def send_loop(ws, outbound: Path, control: Path) -> None:
