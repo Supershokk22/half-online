@@ -17,7 +17,6 @@ from tkinter import messagebox, ttk
 ROOT   = Path(__file__).resolve().parent
 PYTHON = Path(sys.executable)
 LOG_DIR     = ROOT / "logs"
-ROOMS_FILE  = ROOT / "known_rooms.json"
 RELAY_PORT  = 8790
 BRIDGE_DIR  = Path(os.environ.get("LOCALAPPDATA", ".")) / "HalfSwordUE5" / "Saved" / "HalfSwordOnlineReal"
 TUNNEL_RE   = re.compile(r"https://[a-zA-Z0-9\-]+\.trycloudflare\.com")
@@ -64,12 +63,10 @@ def start_relay_inprocess() -> bool:
     if port_open(RELAY_PORT):
         return True
 
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("relay_server", ROOT / "relay_server.py")
-    mod  = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-
-    relay = mod.Relay()
+    # Import normal: no Python 3.14, dataclasses precisam encontrar o modulo
+    # registrado em sys.modules durante a criacao das classes.
+    from relay_server import Relay
+    relay = Relay()
 
     def _run():
         global _relay_loop
@@ -111,13 +108,15 @@ class RealLauncher(tk.Tk):
         self.room   = tk.StringVar(value="duelo")
         self.server = tk.StringVar()
         self.status = tk.StringVar(value="Pronto.")
-        self.room_status = tk.StringVar(value="Sala: aguardando host")
+        self.room_status = tk.StringVar(value="Nenhuma arena ativa")
 
         self.room_locked = False
         self.tunnel_url  = ""
         self.agent:  subprocess.Popen | None = None
         self.tunnel: subprocess.Popen | None = None
-        self.known_rooms: list[dict[str, str]] = self._load_known_rooms()
+        # Convites sao mantidos apenas durante a sessao. Uma lista global real
+        # depende do servidor-diretorio; historico local nao e sala ativa.
+        self.known_rooms: list[dict[str, str]] = []
 
         self._style()
         self._build()
@@ -244,14 +243,10 @@ class RealLauncher(tk.Tk):
         ttk.Entry(parent, textvariable=variable).pack(fill="x", pady=(0, 12))
 
     def _load_known_rooms(self) -> list[dict[str, str]]:
-        try:
-            raw = json.loads(ROOMS_FILE.read_text(encoding="utf-8"))
-            return [item for item in raw if isinstance(item, dict) and item.get("room") and item.get("url")]
-        except (OSError, json.JSONDecodeError):
-            return []
+        return []
 
     def _save_known_rooms(self) -> None:
-        ROOMS_FILE.write_text(json.dumps(self.known_rooms[:20], ensure_ascii=False, indent=2), encoding="utf-8")
+        return
 
     def remember_room(self, room: str, url: str, owner: str, state: str = "CONVITE") -> None:
         url = url.strip()
@@ -400,7 +395,10 @@ class RealLauncher(tk.Tk):
                     if m:
                         url = m.group(0)
                         self.tunnel_url = url
-                        ws  = url.replace("https://", "wss://")
+                        # O host registra a sala diretamente no relay local.
+                        # O link publico e usado apenas pelo amigo; tentar usa-lo
+                        # aqui falha enquanto o DNS do Quick Tunnel ainda propaga.
+                        ws = f"ws://127.0.0.1:{RELAY_PORT}"
                         self.agent = self._spawn(
                             ["peer_agent.py", "--server", ws,
                              "--room", room, "--name", name, "--role", "host"],
@@ -412,14 +410,24 @@ class RealLauncher(tk.Tk):
                             self.lock_button.config(state="normal")
                             self.room_status.set(f"Sala aberta — {n}")
                             self.status.set("Link criado! Envie para seu amigo.")
-                            self.remember_room(room, u, "Voce", "ATIVA")
+                            self.refresh_rooms()
                         self.after(0, _ui)
                         return
 
             self.after(0, lambda: self.status.set(
                 "Erro ao criar link. Veja logs/tunnel.log"))
 
-        threading.Thread(target=_bg, daemon=True).start()
+        def _bg_safe():
+            try:
+                _bg()
+            except Exception as exc:
+                LOG_DIR.mkdir(exist_ok=True)
+                with (LOG_DIR / "launcher-error.log").open("a", encoding="utf-8") as log:
+                    log.write(f"host_room: {type(exc).__name__}: {exc}\n")
+                self.after(0, lambda err=str(exc): self.status.set(
+                    f"Falha ao criar sala: {err}"))
+
+        threading.Thread(target=_bg_safe, daemon=True).start()
 
     def join_room(self) -> None:
         values = self._validate(True)
@@ -459,7 +467,10 @@ class RealLauncher(tk.Tk):
         self.status.set("Comando enviado.")
 
     def _poll_room_status(self) -> None:
-        import json
+        if not self.agent or self.agent.poll() is not None:
+            self.room_status.set("Nenhuma arena ativa")
+            self.after(500, self._poll_room_status)
+            return
         status_file = BRIDGE_DIR / "mp_room_status.json"
         try:
             payload = json.loads(status_file.read_text(encoding="utf-8"))
@@ -497,6 +508,11 @@ class RealLauncher(tk.Tk):
         self.tunnel = None
         self.tunnel_url = ""
         self.status.set("Conexao encerrada.")
+        self.room_status.set("Nenhuma arena ativa")
+        try:
+            (BRIDGE_DIR / "mp_room_status.json").unlink(missing_ok=True)
+        except OSError:
+            pass
         self.refresh_rooms()
 
     def close(self) -> None:
