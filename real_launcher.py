@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import re
 import socket
@@ -16,6 +17,7 @@ from tkinter import messagebox, ttk
 ROOT   = Path(__file__).resolve().parent
 PYTHON = Path(sys.executable)
 LOG_DIR     = ROOT / "logs"
+ROOMS_FILE  = ROOT / "known_rooms.json"
 RELAY_PORT  = 8790
 BRIDGE_DIR  = Path(os.environ.get("LOCALAPPDATA", ".")) / "HalfSwordUE5" / "Saved" / "HalfSwordOnlineReal"
 TUNNEL_RE   = re.compile(r"https://[a-zA-Z0-9\-]+\.trycloudflare\.com")
@@ -101,9 +103,9 @@ class RealLauncher(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("Half Sword Online")
-        self.geometry("760x560")
-        self.minsize(700, 520)
-        self.configure(bg="#11151d")
+        self.geometry("1080x660")
+        self.minsize(920, 600)
+        self.configure(bg="#0b0f16")
 
         self.name   = tk.StringVar(value="Jogador")
         self.room   = tk.StringVar(value="duelo")
@@ -115,6 +117,7 @@ class RealLauncher(tk.Tk):
         self.tunnel_url  = ""
         self.agent:  subprocess.Popen | None = None
         self.tunnel: subprocess.Popen | None = None
+        self.known_rooms: list[dict[str, str]] = self._load_known_rooms()
 
         self._style()
         self._build()
@@ -127,91 +130,180 @@ class RealLauncher(tk.Tk):
     def _style(self) -> None:
         s = ttk.Style(self)
         s.theme_use("clam")
-        s.configure(".", background="#11151d", foreground="#e8edf6", font=("Segoe UI", 10))
-        s.configure("TFrame",       background="#11151d")
-        s.configure("Card.TFrame",  background="#1b2431")
-        s.configure("Title.TLabel", background="#11151d", foreground="#e7b953",
-                    font=("Segoe UI Semibold", 21))
-        s.configure("Card.TLabel",  background="#1b2431", foreground="#e8edf6")
-        s.configure("Hint.TLabel",  background="#1b2431", foreground="#a9b6c7")
-        s.configure("TEntry",       fieldbackground="#0f141d", foreground="#e8edf6",
-                    insertcolor="#e8edf6")
+        s.configure(".", background="#0b0f16", foreground="#e8edf6", font=("Segoe UI", 10))
+        s.configure("TFrame",       background="#0b0f16")
+        s.configure("Card.TFrame",  background="#141c28")
+        s.configure("Title.TLabel", background="#0b0f16", foreground="#f2c768",
+                    font=("Segoe UI Semibold", 23))
+        s.configure("Card.TLabel",  background="#141c28", foreground="#edf2fb")
+        s.configure("Hint.TLabel",  background="#141c28", foreground="#9eacbf")
+        s.configure("Status.TLabel", background="#0b0f16", foreground="#9eacbf")
+        s.configure("TEntry", fieldbackground="#0d131d", foreground="#edf2fb",
+                    insertcolor="#edf2fb", bordercolor="#314155", lightcolor="#314155")
         s.configure("Accent.TButton", background="#d08d31", foreground="#10141a",
-                    font=("Segoe UI Semibold", 10), padding=(14, 9))
+                    font=("Segoe UI Semibold", 10), padding=(14, 10))
         s.map("Accent.TButton", background=[("active", "#e8af57")])
-        s.configure("TButton", background="#2c3a4e", foreground="#edf2fa", padding=(12, 8))
+        s.configure("TButton", background="#26364b", foreground="#edf2fa", padding=(12, 9))
+        s.map("TButton", background=[("active", "#344861")])
+        s.configure("Rooms.Treeview", background="#0d131d", fieldbackground="#0d131d",
+                    foreground="#e8edf6", rowheight=38, bordercolor="#26364b")
+        s.map("Rooms.Treeview", background=[("selected", "#314b6e")],
+              foreground=[("selected", "#ffffff")])
+        s.configure("Rooms.Treeview.Heading", background="#1b2737", foreground="#f2c768",
+                    font=("Segoe UI Semibold", 9), relief="flat")
 
     # ── layout ────────────────────────────────────────────────────────────────
 
     def _build(self) -> None:
-        root = ttk.Frame(self, padding=22)
+        root = ttk.Frame(self, padding=(26, 22))
         root.pack(fill="both", expand=True)
+        header = ttk.Frame(root)
+        header.pack(fill="x", pady=(0, 18))
+        ttk.Label(header, text="HALF ONLINE", style="Title.TLabel").pack(side="left")
+        ttk.Label(header, text="LOBBY  •  v2.0 PRO", style="Status.TLabel",
+                  font=("Segoe UI Semibold", 10)).pack(side="left", padx=(12, 0), pady=(8, 0))
+        ttk.Button(header, text="Abrir Half Sword", command=self.launch_game).pack(side="right")
 
-        ttk.Label(root, text="HALF SWORD ONLINE  v2.0 PRO", style="Title.TLabel").pack(anchor="w")
-        ttk.Label(root,
-                  text="Cada jogador abre sua propria Steam e copia do jogo.",
-                  style="Hint.TLabel").pack(anchor="w", pady=(2, 16))
+        body = ttk.Frame(root)
+        body.pack(fill="both", expand=True)
+        body.columnconfigure(0, weight=4, minsize=390)
+        body.columnconfigure(1, weight=6, minsize=470)
+        body.rowconfigure(0, weight=1)
 
-        # ── campos ──
-        cfg = ttk.Frame(root, style="Card.TFrame", padding=16)
-        cfg.pack(fill="x")
-        ttk.Label(cfg, text="Dados da sala", style="Card.TLabel",
-                  font=("Segoe UI Semibold", 13)).grid(row=0, column=0, columnspan=3,
-                                                        sticky="w", pady=(0, 8))
-        for col, txt in enumerate(("Seu nome", "Nome da sala", "URL do host")):
-            ttk.Label(cfg, text=txt, style="Hint.TLabel").grid(row=1, column=col,
-                                                                sticky="w", padx=(0 if col == 0 else 10, 0))
-        ttk.Entry(cfg, textvariable=self.name  ).grid(row=2, column=0, sticky="ew")
-        ttk.Entry(cfg, textvariable=self.room  ).grid(row=2, column=1, sticky="ew", padx=(10, 0))
-        ttk.Entry(cfg, textvariable=self.server).grid(row=2, column=2, sticky="ew", padx=(10, 0))
-        cfg.columnconfigure(0, weight=1)
-        cfg.columnconfigure(1, weight=1)
-        cfg.columnconfigure(2, weight=2)
-
-        # ── hospedar ──
-        host = ttk.Frame(root, style="Card.TFrame", padding=16)
-        host.pack(fill="x", pady=(12, 0))
-        ttk.Label(host, text="Eu vou hospedar", style="Card.TLabel",
+        left = ttk.Frame(body, style="Card.TFrame", padding=18)
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
+        ttk.Label(left, text="CONTROLE DA SALA", style="Card.TLabel",
                   font=("Segoe UI Semibold", 13)).pack(anchor="w")
-        ttk.Label(host, text="Cria um link publico. Envie o link para seu amigo.",
-                  style="Hint.TLabel").pack(anchor="w", pady=(4, 10))
+        ttk.Label(left, text="Crie uma sala privada ou entre por convite.",
+                  style="Hint.TLabel").pack(anchor="w", pady=(3, 16))
 
-        row1 = ttk.Frame(host, style="Card.TFrame"); row1.pack(fill="x")
-        ttk.Button(row1, text="Hospedar sala", style="Accent.TButton",
-                   command=self.host_room).pack(side="left")
-        ttk.Button(row1, text="Copiar link",
-                   command=self.copy_address).pack(side="left", padx=8)
-        self.host_address = ttk.Label(row1, text="", style="Hint.TLabel", wraplength=400)
-        self.host_address.pack(side="left", padx=6)
+        self._field(left, "SEU NOME", self.name)
+        self._field(left, "NOME DA SALA", self.room)
+        self._field(left, "LINK DO HOST", self.server)
 
-        row2 = ttk.Frame(host, style="Card.TFrame"); row2.pack(fill="x", pady=(8, 0))
-        ttk.Label(row2, textvariable=self.room_status, style="Hint.TLabel").pack(side="left")
-        self.lock_button = ttk.Button(row2, text="Trancar sala",
+        actions = ttk.Frame(left, style="Card.TFrame")
+        actions.pack(fill="x", pady=(5, 12))
+        ttk.Button(actions, text="CRIAR SALA", style="Accent.TButton",
+                   command=self.host_room).pack(side="left", fill="x", expand=True)
+        ttk.Button(actions, text="ENTRAR", command=self.join_room).pack(side="left", padx=(8, 0))
+        ttk.Button(left, text="Copiar link da minha sala", command=self.copy_address).pack(anchor="w")
+
+        active = ttk.Frame(left, style="Card.TFrame", padding=12)
+        active.pack(fill="x", pady=(16, 0))
+        ttk.Label(active, text="SALA ATIVA", style="Card.TLabel",
+                  font=("Segoe UI Semibold", 10)).pack(anchor="w")
+        ttk.Label(active, textvariable=self.room_status, style="Hint.TLabel",
+                  wraplength=330).pack(anchor="w", pady=(5, 0))
+        self.host_address = ttk.Label(active, text="", style="Hint.TLabel", wraplength=330)
+        self.host_address.pack(anchor="w", pady=(4, 8))
+        self.lock_button = ttk.Button(active, text="Trancar sala",
                                       command=self.toggle_lock, state="disabled")
-        self.lock_button.pack(side="right")
+        self.lock_button.pack(anchor="w")
 
-        ttk.Label(host, text="Avatar do amigo so aparece quando ele entrar na sala.",
-                  style="Hint.TLabel").pack(anchor="w", pady=(8, 0))
+        right = ttk.Frame(body, style="Card.TFrame", padding=18)
+        right.grid(row=0, column=1, sticky="nsew")
+        top = ttk.Frame(right, style="Card.TFrame")
+        top.pack(fill="x")
+        ttk.Label(top, text="SALAS", style="Card.TLabel", font=("Segoe UI Semibold", 13)).pack(side="left")
+        ttk.Button(top, text="Atualizar", command=self.refresh_rooms).pack(side="right")
+        ttk.Label(right, text="Salas desta sessao e convites salvos neste PC.",
+                  style="Hint.TLabel").pack(anchor="w", pady=(3, 14))
 
-        # ── entrar ──
-        cli = ttk.Frame(root, style="Card.TFrame", padding=16)
-        cli.pack(fill="x", pady=(12, 0))
-        ttk.Label(cli, text="Eu vou entrar", style="Card.TLabel",
-                  font=("Segoe UI Semibold", 13)).pack(anchor="w")
-        ttk.Label(cli, text="Cole o link que o host enviou e clique Entrar na sala.",
-                  style="Hint.TLabel").pack(anchor="w", pady=(4, 10))
-        row3 = ttk.Frame(cli, style="Card.TFrame"); row3.pack(fill="x")
-        ttk.Button(row3, text="Entrar na sala", style="Accent.TButton",
-                   command=self.join_room).pack(side="left")
-        ttk.Button(row3, text="Abrir Half Sword",
-                   command=self.launch_game).pack(side="left", padx=8)
+        table = ttk.Frame(right, style="Card.TFrame")
+        table.pack(fill="both", expand=True)
+        self.rooms_view = ttk.Treeview(table, style="Rooms.Treeview", show="headings",
+                                       columns=("room", "owner", "state"), selectmode="browse")
+        self.rooms_view.heading("room", text="SALA")
+        self.rooms_view.heading("owner", text="HOST / CONVITE")
+        self.rooms_view.heading("state", text="STATUS")
+        self.rooms_view.column("room", width=145, minwidth=110, anchor="w")
+        self.rooms_view.column("owner", width=245, minwidth=160, anchor="w")
+        self.rooms_view.column("state", width=110, minwidth=90, anchor="center")
+        scroll = ttk.Scrollbar(table, orient="vertical", command=self.rooms_view.yview)
+        self.rooms_view.configure(yscrollcommand=scroll.set)
+        self.rooms_view.pack(side="left", fill="both", expand=True)
+        scroll.pack(side="right", fill="y")
+        self.rooms_view.bind("<Double-1>", lambda _event: self.join_selected_room())
+        row = ttk.Frame(right, style="Card.TFrame")
+        row.pack(fill="x", pady=(14, 0))
+        ttk.Button(row, text="Entrar na sala selecionada", style="Accent.TButton",
+                   command=self.join_selected_room).pack(side="left")
+        ttk.Button(row, text="Remover convite", command=self.remove_selected_room).pack(side="left", padx=8)
 
-        # ── rodape ──
-        bot = ttk.Frame(root); bot.pack(fill="x", pady=(18, 0))
-        ttk.Label(bot, textvariable=self.status).pack(side="left")
-        ttk.Button(bot, text="Parar conexao", command=self.stop).pack(side="right")
-        ttk.Label(root, text="assinado: shokk", style="Title.TLabel",
-                  font=("Segoe UI Semibold", 10)).pack(anchor="e", pady=(6, 0))
+        footer = ttk.Frame(root)
+        footer.pack(fill="x", pady=(15, 0))
+        ttk.Label(footer, textvariable=self.status, style="Status.TLabel").pack(side="left")
+        ttk.Button(footer, text="Parar conexao", command=self.stop).pack(side="right")
+        ttk.Label(footer, text="assinado: shokk", style="Status.TLabel").pack(side="right", padx=16)
+        self.refresh_rooms()
+
+    def _field(self, parent: ttk.Frame, caption: str, variable: tk.StringVar) -> None:
+        ttk.Label(parent, text=caption, style="Hint.TLabel",
+                  font=("Segoe UI Semibold", 8)).pack(anchor="w", pady=(0, 4))
+        ttk.Entry(parent, textvariable=variable).pack(fill="x", pady=(0, 12))
+
+    def _load_known_rooms(self) -> list[dict[str, str]]:
+        try:
+            raw = json.loads(ROOMS_FILE.read_text(encoding="utf-8"))
+            return [item for item in raw if isinstance(item, dict) and item.get("room") and item.get("url")]
+        except (OSError, json.JSONDecodeError):
+            return []
+
+    def _save_known_rooms(self) -> None:
+        ROOMS_FILE.write_text(json.dumps(self.known_rooms[:20], ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def remember_room(self, room: str, url: str, owner: str, state: str = "CONVITE") -> None:
+        url = url.strip()
+        if not url:
+            return
+        item = {"room": room, "url": url, "owner": owner, "state": state}
+        self.known_rooms = [saved for saved in self.known_rooms if saved.get("url") != url]
+        self.known_rooms.insert(0, item)
+        self._save_known_rooms()
+        self.refresh_rooms()
+
+    def refresh_rooms(self) -> None:
+        if not hasattr(self, "rooms_view"):
+            return
+        self.rooms_view.delete(*self.rooms_view.get_children())
+        if self.tunnel_url:
+            self.rooms_view.insert("", "end", values=(self.room.get().strip() or "sala", "Voce", "ATIVA"),
+                                   tags=("active",))
+        for item in self.known_rooms:
+            state = item.get("state", "CONVITE")
+            self.rooms_view.insert("", "end", values=(item["room"], item.get("owner", "Convite"), state),
+                                   tags=(item["url"],))
+        self.rooms_view.tag_configure("active", foreground="#f2c768")
+
+    def join_selected_room(self) -> None:
+        selected = self.rooms_view.selection()
+        if not selected:
+            messagebox.showinfo("Salas", "Selecione uma sala primeiro.")
+            return
+        values = self.rooms_view.item(selected[0], "values")
+        if len(values) < 3:
+            return
+        if values[2] == "ATIVA":
+            self.status.set("Esta e a sua sala ativa. Copie o link para convidar um amigo.")
+            return
+        for item in self.known_rooms:
+            if item.get("room") == values[0] and item.get("owner", "Convite") == values[1]:
+                self.room.set(item["room"])
+                self.server.set(item["url"])
+                self.join_room()
+                return
+
+    def remove_selected_room(self) -> None:
+        selected = self.rooms_view.selection()
+        if not selected:
+            return
+        values = self.rooms_view.item(selected[0], "values")
+        if len(values) < 3 or values[2] == "ATIVA":
+            return
+        self.known_rooms = [item for item in self.known_rooms
+                            if not (item.get("room") == values[0] and item.get("owner", "Convite") == values[1])]
+        self._save_known_rooms()
+        self.refresh_rooms()
 
     # ── auto-update ───────────────────────────────────────────────────────────
 
@@ -319,6 +411,7 @@ class RealLauncher(tk.Tk):
                             self.lock_button.config(state="normal")
                             self.room_status.set(f"Sala aberta — {n}")
                             self.status.set("Link criado! Envie para seu amigo.")
+                            self.remember_room(room, u, "Voce", "ATIVA")
                         self.after(0, _ui)
                         return
 
@@ -354,6 +447,7 @@ class RealLauncher(tk.Tk):
              "--room", room, "--name", name, "--role", "client"],
             "peer-client.log",
         )
+        self.remember_room(room, address, "Convite", "RECENTE")
         self.lock_button.config(state="disabled")
         self.status.set("Conectando... O host precisa estar com a sala aberta.")
 
@@ -402,6 +496,7 @@ class RealLauncher(tk.Tk):
         self.tunnel = None
         self.tunnel_url = ""
         self.status.set("Conexao encerrada.")
+        self.refresh_rooms()
 
     def close(self) -> None:
         self.stop()

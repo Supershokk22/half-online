@@ -18,6 +18,7 @@ do jogo, cada pessoa no seu próprio PC.
 - Criação de sala pública via Cloudflare Tunnel funcionando corretamente
 - Relay rodando in-process — sem dependência de subprocesso externo
 - UI renovada: status em tempo real, link gerado automaticamente
+- Lobby visual para criar, guardar e entrar em salas por convite
 - Correção de bug crítico onde o link público nunca era gerado
 - Estabilidade geral e organização do código
 
