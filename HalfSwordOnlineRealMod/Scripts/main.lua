@@ -7,6 +7,9 @@ local ALT_REMOTE_CLASS = "/Game/Maps/Map_Hub_Tavern_Frank.NewBlueprint_C"
 local ARENA_MAP = "/Game/Maps/Arenas/Map_Arena_Cellar"
 local OPENWORLD_MAP = "/Game/HalfOpenWorld/Maps/L_World_V1"
 local OPENWORLD_PROXY_MESH = "/Game/HalfOpenWorld/Geometry/SM_Block.SM_Block"
+-- Safe mode: runtime SpawnActor/DestroyActor is not stable in this Shipping build.
+-- Keep networking alive, but wait for a native replicated pawn implementation.
+local runtime_spawn_disabled = true
 local base = os.getenv("LOCALAPPDATA")
 local BRIDGE = (base or ".") .. "\\HalfSwordUE5\\Saved\\HalfSwordOnlineReal"
 local state = { running = false, session = "", remotePawn = nil, botPawn = nil, spawnRequested = false, lastInbound = "", lastGameControl = "", lastStatus = 0, loadAttempts = 0, pawnStableCount = 0, lastRemotePosition = nil, lastRemoteTime = nil, last_cleanup = 0 }
@@ -127,6 +130,10 @@ end
 local function claimRemoteAvatar(localPawn)
     if valid(state.remotePawn) or not valid(localPawn) then return valid(state.remotePawn) end
     if isOpenWorld() then
+        if runtime_spawn_disabled then
+            log("Avatar remoto adiado: SpawnActor desativado no modo seguro")
+            return false
+        end
         local world, class = localPawn:GetWorld(), getOpenWorldProxyClass()
         if not valid(world) or not valid(class) then return false end
         local here = localPawn:K2_GetActorLocation()
@@ -177,6 +184,10 @@ local function destroyActor(actor)
 end
 
 local function spawnPracticeOpponent(localPawn)
+    if runtime_spawn_disabled then
+        log("Bot de pratica nao criado: SpawnActor desativado no modo seguro")
+        return
+    end
     if valid(state.botPawn) or not valid(localPawn) then return end
     ExecuteInGameThread(function()
         local world, class = localPawn:GetWorld(), getRemoteClass()
