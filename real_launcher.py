@@ -101,6 +101,9 @@ class RealLauncher(tk.Tk):
         super().__init__()
         self.title("Half Sword Online")
         self.geometry("1080x660")
+        # The launcher is the external admin surface; keep it available above
+        # the windowed game so host actions do not depend on keyboard focus.
+        self.attributes("-topmost", True)
         self.minsize(920, 600)
         self.configure(bg="#120f0f")
 
@@ -163,6 +166,7 @@ class RealLauncher(tk.Tk):
         ttk.Label(header, text="PRIVATE ARENAS  |  v2.1", style="Status.TLabel",
                   font=("Segoe UI Semibold", 10)).pack(side="left", padx=(12, 0), pady=(8, 0))
         ttk.Button(header, text="Abrir Half Sword", command=self.launch_game).pack(side="right")
+        ttk.Label(header, text="Painel externo ativo", style="Status.TLabel").pack(side="right", padx=14)
 
         body = ttk.Frame(root)
         body.pack(fill="both", expand=True)
@@ -199,6 +203,11 @@ class RealLauncher(tk.Tk):
         self.lock_button = ttk.Button(active, text="Trancar sala",
                                       command=self.toggle_lock, state="disabled")
         self.lock_button.pack(anchor="w")
+        admin_row = ttk.Frame(active, style="Card.TFrame")
+        admin_row.pack(fill="x", pady=(10, 0))
+        ttk.Button(admin_row, text="Spawn bot", command=lambda: self.send_game_admin("game spawn_bot")).pack(side="left")
+        ttk.Button(admin_row, text="Spawn item", command=lambda: self.send_game_admin("game spawn_item")).pack(side="left", padx=5)
+        ttk.Button(admin_row, text="Limpar", command=lambda: self.send_game_admin("game clear_spawns")).pack(side="left")
 
         right = ttk.Frame(body, style="Card.TFrame", padding=18)
         right.grid(row=0, column=1, sticky="nsew")
@@ -515,7 +524,9 @@ class RealLauncher(tk.Tk):
             messagebox.showwarning("Admin", "Crie uma sala antes de usar o painel admin.")
             return
         BRIDGE_DIR.mkdir(parents=True, exist_ok=True)
-        (BRIDGE_DIR / "mp_control.txt").write_text(f"{command} {time.time():.3f}\n", encoding="utf-8")
+        # Local host actions go straight to the UE4SS bridge. This avoids
+        # keyboard focus issues and does not depend on a remote peer relay.
+        (BRIDGE_DIR / "mp_openworld_control.txt").write_text(command + "\n", encoding="utf-8")
         self.status.set("Comando admin enviado.")
 
     def _poll_room_status(self) -> None:
