@@ -9,7 +9,7 @@ local OPENWORLD_MAP = "/Game/HalfOpenWorld/Maps/L_World_V1"
 local OPENWORLD_PROXY_MESH = "/Game/HalfOpenWorld/Geometry/SM_Block.SM_Block"
 local base = os.getenv("LOCALAPPDATA")
 local BRIDGE = (base or ".") .. "\\HalfSwordUE5\\Saved\\HalfSwordOnlineReal"
-local state = { running = false, session = "", remotePawn = nil, botPawn = nil, spawnRequested = false, lastInbound = "", lastGameControl = "", lastStatus = 0, loadAttempts = 0, pawnStableCount = 0, lastRemotePosition = nil, lastRemoteTime = nil }
+local state = { running = false, session = "", remotePawn = nil, botPawn = nil, spawnRequested = false, lastInbound = "", lastGameControl = "", lastStatus = 0, loadAttempts = 0, pawnStableCount = 0, lastRemotePosition = nil, lastRemoteTime = nil, last_cleanup = 0 }
 
 local function log(message) print("[" .. MOD .. "] " .. message) end
 
@@ -274,11 +274,14 @@ local function updateLoop()
         -- previous unconditional cleanup destroyed the only enemy every
         -- 100 ms, even when nobody was connected.  Only remove an initialized
         -- native spar bot after a real remote avatar has been claimed.
-        if valid(state.remotePawn) and not isOpenWorld() then
+        if valid(state.remotePawn) and not isOpenWorld() and os.clock() - state.last_cleanup > 1.0 then
             clearNativeSparOpponents(pawn)
+            state.last_cleanup = os.clock()
         end
     end
-    ExecuteWithDelay(100, updateLoop)
+    -- 5 Hz is sufficient for the file bridge and avoids a full actor scan on
+    -- every frame; rendering and native game physics remain untouched.
+    ExecuteWithDelay(200, updateLoop)
 end
 
 ExecuteWithDelay(1000, updateLoop)
