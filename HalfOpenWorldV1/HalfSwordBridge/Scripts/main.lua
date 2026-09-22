@@ -498,6 +498,10 @@ RegisterKeyBind(Key.NUM_THREE, {ModifierKey.CONTROL}, admin_clear_spawns)
 RegisterKeyBind(Key.ONE, {ModifierKey.CONTROL}, admin_spawn_bot)
 RegisterKeyBind(Key.TWO, {ModifierKey.CONTROL}, admin_spawn_item)
 RegisterKeyBind(Key.THREE, {ModifierKey.CONTROL}, admin_clear_spawns)
+-- Numpad direct fallback: the game may consume Ctrl before UE4SS receives it.
+RegisterKeyBind(Key.NUM_ONE, admin_spawn_bot)
+RegisterKeyBind(Key.NUM_TWO, admin_spawn_item)
+RegisterKeyBind(Key.NUM_THREE, admin_clear_spawns)
 
 RegisterKeyBind(Key.F12, {ModifierKey.CONTROL}, function()
     ExecuteInGameThread(function()
