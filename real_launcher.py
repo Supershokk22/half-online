@@ -401,7 +401,8 @@ class RealLauncher(tk.Tk):
                         ws = f"ws://127.0.0.1:{RELAY_PORT}"
                         self.agent = self._spawn(
                             ["peer_agent.py", "--server", ws,
-                             "--room", room, "--name", name, "--role", "host"],
+                             "--room", room, "--name", name, "--role", "host",
+                             "--openworld"],
                             "peer-host.log",
                         )
                         def _ui(u=url, n=name):
@@ -411,6 +412,7 @@ class RealLauncher(tk.Tk):
                             self.room_status.set(f"Sala aberta — {n}")
                             self.status.set("Link criado! Envie para seu amigo.")
                             self.refresh_rooms()
+                            self.launch_game()
                         self.after(0, _ui)
                         return
 
@@ -453,18 +455,28 @@ class RealLauncher(tk.Tk):
 
         self.agent = self._spawn(
             ["peer_agent.py", "--server", ws,
-             "--room", room, "--name", name, "--role", "client"],
+             "--room", room, "--name", name, "--role", "client",
+             "--openworld"],
             "peer-client.log",
         )
         self.remember_room(room, address, "Convite", "RECENTE")
         self.lock_button.config(state="disabled")
         self.status.set("Conectando... O host precisa estar com a sala aberta.")
+        self.launch_game()
 
     def toggle_lock(self) -> None:
         BRIDGE_DIR.mkdir(parents=True, exist_ok=True)
         cmd = "lock off" if self.room_locked else "lock on"
         (BRIDGE_DIR / "mp_control.txt").write_text(cmd + "\n", encoding="utf-8")
         self.status.set("Comando enviado.")
+
+    def send_game_admin(self, command: str) -> None:
+        if not self.agent or self.agent.poll() is not None:
+            messagebox.showwarning("Admin", "Crie uma sala antes de usar o painel admin.")
+            return
+        BRIDGE_DIR.mkdir(parents=True, exist_ok=True)
+        (BRIDGE_DIR / "mp_control.txt").write_text(f"{command} {time.time():.3f}\n", encoding="utf-8")
+        self.status.set("Comando admin enviado.")
 
     def _poll_room_status(self) -> None:
         if not self.agent or self.agent.poll() is not None:
@@ -509,6 +521,8 @@ class RealLauncher(tk.Tk):
         self.tunnel_url = ""
         self.status.set("Conexao encerrada.")
         self.room_status.set("Nenhuma arena ativa")
+        if hasattr(self, "lock_button"):
+            self.lock_button.config(state="disabled")
         try:
             (BRIDGE_DIR / "mp_room_status.json").unlink(missing_ok=True)
         except OSError:

@@ -5,6 +5,8 @@ local MOD = "HalfOnline"
 local REMOTE_CLASS_PATH = "/Game/Character/Blueprints/Willie_BP.Willie_BP_C"
 local ALT_REMOTE_CLASS = "/Game/Maps/Map_Hub_Tavern_Frank.NewBlueprint_C"
 local ARENA_MAP = "/Game/Maps/Arenas/Map_Arena_Cellar"
+local OPENWORLD_MAP = "/Game/HalfOpenWorld/Maps/L_World_V1"
+local OPENWORLD_PROXY_MESH = "/Game/HalfOpenWorld/Geometry/SM_Block.SM_Block"
 local base = os.getenv("LOCALAPPDATA")
 local BRIDGE = (base or ".") .. "\\HalfSwordUE5\\Saved\\HalfSwordOnlineReal"
 local state = { running = false, remotePawn = nil, botPawn = nil, spawnRequested = false, lastInbound = "", lastGameControl = "", lastStatus = 0, loadAttempts = 0, pawnStableCount = 0, lastRemotePosition = nil, lastRemoteTime = nil }
@@ -78,8 +80,56 @@ local function findInitializedOpponent(localPawn)
     return nil
 end
 
+local function isOpenWorld()
+    local ok, world = pcall(function()
+        local helpers = require("UEHelpers")
+        return helpers.GetWorld()
+    end)
+    if not ok or not valid(world) then return false end
+    local okName, name = pcall(function() return world:GetFullName() end)
+    return okName and name and name:find(OPENWORLD_MAP, 1, true) ~= nil
+end
+
+local function getOpenWorldProxyClass()
+    local cls = StaticFindObject("/Script/Engine.StaticMeshActor")
+    return valid(cls) and cls or nil
+end
+
+local function setupOpenWorldProxy(actor)
+    pcall(function()
+        local mesh = StaticFindObject(OPENWORLD_PROXY_MESH)
+        if not valid(mesh) then
+            LoadAsset(OPENWORLD_PROXY_MESH)
+            mesh = StaticFindObject(OPENWORLD_PROXY_MESH)
+        end
+        local component = actor:GetComponentByClass(StaticFindObject("/Script/Engine.StaticMeshComponent"))
+        if valid(component) and valid(mesh) then
+            component:SetStaticMesh(mesh)
+        end
+        actor:SetActorScale3D({ X = 0.9, Y = 0.9, Z = 2.0 })
+        actor:SetActorEnableCollision(false)
+    end)
+end
+
 local function claimRemoteAvatar(localPawn)
     if valid(state.remotePawn) or not valid(localPawn) then return valid(state.remotePawn) end
+    if isOpenWorld() then
+        local world, class = localPawn:GetWorld(), getOpenWorldProxyClass()
+        if not valid(world) or not valid(class) then return false end
+        local here = localPawn:K2_GetActorLocation()
+        local rotation = localPawn:K2_GetActorRotation()
+        local transform = { Translation = { X = here.X + 260, Y = here.Y, Z = here.Z }, Rotation = rotation, Scale3D = { X = 1, Y = 1, Z = 1 } }
+        local ok, actor = pcall(function() return world:SpawnActor(class, transform, {}) end)
+        if ok and valid(actor) then
+            state.remotePawn = actor
+            setupOpenWorldProxy(actor)
+            state.lastRemotePosition = nil
+            state.lastRemoteTime = nil
+            log("Avatar remoto Open World criado como proxy leve de lobby")
+            return true
+        end
+        return false
+    end
     local actor = findInitializedOpponent(localPawn)
     if not valid(actor) then return false end
 

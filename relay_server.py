@@ -120,6 +120,11 @@ class Relay:
                 room.locked = bool(message.get("value"))
                 await self.broadcast_status(room)
                 return
+            if message.get("action") == "game_control":
+                command = str(message.get("value", ""))[:80]
+                if command:
+                    await self.broadcast_room(room, {"type": "game.control", "command": command})
+                return
             await self.send(peer.connection, {"type": "error", "code": "unknown_admin_action"})
             return
         if message_type != "snapshot" or not self.valid_snapshot(message):

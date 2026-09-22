@@ -102,6 +102,9 @@ async def send_loop(ws, outbound: Path, control: Path) -> None:
             if len(parts) == 2 and parts[0] == "lock" and parts[1] in {"on", "off"}:
                 await ws.send(json.dumps({"type": "admin", "action": "lock", "value": parts[1] == "on"}, separators=(",", ":")))
                 previous_control = raw_control
+            elif raw_control.startswith("game "):
+                await ws.send(json.dumps({"type": "admin", "action": "game_control", "value": raw_control}, separators=(",", ":")))
+                previous_control = raw_control
         await asyncio.sleep(0.05)  # 20 Hz file bridge; bounded and low overhead.
 
 
@@ -110,7 +113,7 @@ async def run(args: argparse.Namespace) -> None:
     bridge.mkdir(parents=True, exist_ok=True)
     outbound, inbound = bridge / "mp_outbound.txt", bridge / "mp_inbound.txt"
     control, room_status = bridge / "mp_control.txt", bridge / "mp_room_status.json"
-    game_control = bridge / "mp_game_control.txt"
+    game_control, role_file = bridge / "mp_game_control.txt", bridge / "mp_role.txt"
     # A reopened host must not see the last session's ghost avatar while alone.
     clear_file(inbound)
     request_game_action(game_control, "remote remove")
@@ -122,6 +125,9 @@ async def run(args: argparse.Namespace) -> None:
                 if welcome.get("type") == "error":
                     raise RuntimeError(welcome.get("code", "relay_error"))
                 logging.info("connected to room %s as %s", args.room, args.role)
+                write_bridge_text(role_file, args.role + "\n")
+                if args.openworld:
+                    request_game_action(game_control, "openworld start")
                 sender = asyncio.create_task(send_loop(ws, outbound, control))
                 try:
                     async for raw in ws:
@@ -133,6 +139,8 @@ async def run(args: argparse.Namespace) -> None:
                         elif message.get("type") in {"peer.left", "room.closed"}:
                             clear_file(inbound)
                             request_game_action(game_control, "remote remove")
+                        elif message.get("type") == "game.control":
+                            request_game_action(game_control, str(message.get("command", "")))
                         elif message.get("type") == "error":
                             logging.warning("relay error: %s", message.get("code"))
                 finally:
@@ -149,6 +157,7 @@ if __name__ == "__main__":
     parser.add_argument("--room", required=True)
     parser.add_argument("--name", required=True)
     parser.add_argument("--role", choices=("host", "client"), required=True)
+    parser.add_argument("--openworld", action="store_true", help="Envia o jogador para o lobby Open World ao conectar")
     parser.add_argument("--bridge", default=str(Path.home() / "AppData/Local/HalfSwordUE5/Saved/HalfSwordOnlineReal"))
     options = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
