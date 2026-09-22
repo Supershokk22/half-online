@@ -13,3 +13,12 @@ dist/
 _internal/
 *.bak
 .env
+
+# Unreal project caches/build outputs
+HalfOpenWorldV1/Binaries/
+HalfOpenWorldV1/Build/
+HalfOpenWorldV1/DerivedDataCache/
+HalfOpenWorldV1/Intermediate/
+HalfOpenWorldV1/Saved/
+HalfOpenWorldV1/*.sln
+HalfOpenWorldV1/.vs/

@@ -55,6 +55,17 @@ reproduzir.
 Para instalação assistida, conexão dos dois PCs e diagnóstico da sincronização,
 consulte [GUIA-PARA-IA.md](GUIA-PARA-IA.md).
 
+## Half Open World V1
+
+A pasta [HalfOpenWorldV1](HalfOpenWorldV1/README.md) guarda o primeiro prototipo
+editavel do projeto de expansao. Ela inclui mapa, menu de teste, scripts de
+geracao, bridge UE4SS experimental e um guia de continuidade para outra IA.
+
+Estado atual: o mapa V1 abre no Half Sword por bridge, o respawn manual foi
+confirmado em log e o fluxo de autoria no Unreal funciona. A integracao do menu
+principal e a validacao completa de movimento, combate e fisica ainda estao em
+andamento.
+
 ```text
  /////   //  //   /////   //  //   //  //
 //       //  //  //   //  // //    // //

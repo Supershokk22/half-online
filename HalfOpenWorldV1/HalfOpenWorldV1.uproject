@@ -1,0 +1,14 @@
+{
+  "FileVersion": 3,
+  "EngineAssociation": "5.4",
+  "Category": "Half Sword Mod",
+  "Description": "Half Open World V1 - mapas e menu editaveis por shokk",
+  "Modules": [
+    { "Name": "HalfOpenWorldV1", "Type": "Runtime", "LoadingPhase": "Default" },
+    { "Name": "HalfOpenWorldV1Editor", "Type": "Editor", "LoadingPhase": "Default" }
+  ],
+  "Plugins": [
+    { "Name": "PythonScriptPlugin", "Enabled": true },
+    { "Name": "EditorScriptingUtilities", "Enabled": true }
+  ]
+}
