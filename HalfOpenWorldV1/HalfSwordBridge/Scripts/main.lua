@@ -7,12 +7,14 @@ local UEHelpers = require("UEHelpers")
 local attempted_world = nil
 local travel_pending = false
 local admin_enabled = false
+local last_panel_toggle = 0
 local base = os.getenv("LOCALAPPDATA")
 local online_bridge = (base or ".") .. "\\HalfSwordUE5\\Saved\\HalfSwordOnlineReal"
 local last_control_command = ""
 local consumed_openworld_session = ""
 local control_retry_count = 0
 local admin_spawns = {}
+local current_session
 -- Keep file-bridge polling light.  A 500 ms callback queue can survive map
 -- teardown and leave stale game-thread callbacks during UE5 renderer shutdown.
 local control_poll_interval_ms = 2000
@@ -71,13 +73,26 @@ local function admin_log(message)
     end
 end
 
+local function session_label()
+    local session = current_session()
+    if not session then return "SEM SALA CONFIRMADA" end
+    return string.upper(session.role) .. " | jogadores " .. tostring(session.players)
+end
+
 local function show_admin_panel()
     screen_notice(
-        "ADMIN HOST  |  Ctrl+1: bot  |  Ctrl+2: item  |  Ctrl+3: limpar\n"
-        .. "Ctrl+F10: restaurar jogador  |  Ctrl+F11: voltar arena  |  Ctrl+F7: fechar",
+        "PAINEL ADMIN  |  " .. session_label() .. "\n"
+        .. "Ctrl+1 bot marcador  |  Ctrl+2 item marcador  |  Ctrl+3 limpar\n"
+        .. "Ctrl+Space salto  |  Ctrl+X esquiva  |  Ctrl+C salto acrobatico\n"
+        .. "Ctrl+F9 diagnostico  |  Ctrl+F10 restaurar  |  Ctrl+F11 arena\n"
+        .. "Ctrl+F7 fechar painel",
         120.0,
         "HalfOnlineAdminPanel"
     )
+    local controller = UEHelpers.GetPlayerController()
+    if controller and controller:IsValid() then
+        pcall(function() controller:ClientMessage("[HALF ONLINE] Painel admin ativo — " .. session_label()) end)
+    end
 end
 
 local function hide_admin_panel()
@@ -89,7 +104,7 @@ local function admin_help()
     print("[HalfOpenWorldV1][ADMIN] Ctrl+1 bot | Ctrl+2 item | Ctrl+3 limpar | Ctrl+F10 jogador | Ctrl+F11 arena\n")
 end
 
-local function current_session()
+current_session = function()
     local file = io.open(online_bridge .. "\\mp_session.txt", "r")
     if not file then return nil end
     local line = file:read("*l") or ""
@@ -117,6 +132,32 @@ local function get_player_location(offset_x, offset_y, offset_z)
         return { X = loc.X + offset_x, Y = loc.Y + offset_y, Z = loc.Z + offset_z }
     end
     return { X = offset_x, Y = offset_y, Z = offset_z + 180 }
+end
+
+local function movement_action(kind)
+    ExecuteInGameThread(function()
+        local ok, err = pcall(function()
+            local world = UEHelpers.GetWorld()
+            local controller = UEHelpers.GetPlayerController()
+            local pawn = controller and controller:IsValid() and controller.Pawn or nil
+            if not is_custom_world(world) or not pawn or not pawn:IsValid() then
+                admin_log("Movimento especial disponivel apenas no lobby com jogador carregado.")
+                return
+            end
+            local forward = pawn:GetActorForwardVector()
+            local velocity, label
+            if kind == "jump" then
+                velocity, label = { X = 0, Y = 0, Z = 520 }, "Salto"
+            elseif kind == "dodge" then
+                velocity, label = { X = forward.X * 650, Y = forward.Y * 650, Z = 90 }, "Esquiva para frente"
+            else
+                velocity, label = { X = forward.X * 380, Y = forward.Y * 380, Z = 360 }, "Salto acrobatico (sem montage)"
+            end
+            pawn:LaunchCharacter(velocity, true, true)
+            admin_log(label .. " aplicado.")
+        end)
+        if not ok then admin_log("Movimento falhou: " .. tostring(err)) end
+    end)
 end
 
 local function setup_proxy_mesh(actor, scale)
@@ -400,6 +441,9 @@ end)
 
 RegisterKeyBind(Key.F7, {ModifierKey.CONTROL}, function()
     ExecuteInGameThread(function()
+        local now = os.clock()
+        if now - last_panel_toggle < 0.45 then return end
+        last_panel_toggle = now
         admin_enabled = not admin_enabled
         admin_log("Painel admin " .. (admin_enabled and "ON" or "OFF"))
         if admin_enabled then
@@ -410,6 +454,13 @@ RegisterKeyBind(Key.F7, {ModifierKey.CONTROL}, function()
         end
     end)
 end)
+
+local function bind_movement(key, action)
+    if key then RegisterKeyBind(key, {ModifierKey.CONTROL}, action) end
+end
+bind_movement(Key.SPACE, function() movement_action("jump") end)
+bind_movement(Key.X, function() movement_action("dodge") end)
+bind_movement(Key.C, function() movement_action("acro") end)
 
 local function admin_spawn_bot()
     ExecuteInGameThread(function()
