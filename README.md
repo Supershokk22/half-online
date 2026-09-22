@@ -1,11 +1,9 @@
-# Half Online — v2.0 PRO
+# Half Online — v2.1
 
 > Projeto comunitário para partidas privadas entre amigos.
 > **Assinado: shokk**
 
 ---
-
-## ⚔ VERSÃO 2.0 PRO ⚔
 
 ## Sobre
 
@@ -13,14 +11,16 @@ Half Online é um projeto público, não oficial e em desenvolvimento. A propost
 é oferecer uma forma simples de jogar em sala privada com duas cópias legítimas
 do jogo, cada pessoa no seu próprio PC.
 
-## O que há de novo na v2.0 PRO
+## Estado da versão
 
-- Criação de sala pública via Cloudflare Tunnel funcionando corretamente
-- Relay rodando in-process — sem dependência de subprocesso externo
-- UI renovada: status em tempo real, link gerado automaticamente
-- Lobby visual para criar, guardar e entrar em salas por convite
-- Correção de bug crítico onde o link público nunca era gerado
-- Estabilidade geral e organização do código
+- Sala privada para duas pessoas: host, convite, entrada e limite de dois jogadores
+- Confirmação de sessão antes de abrir o jogo; arquivos de uma sala antiga não ativam o lobby
+- Lobby Open World automático após a conexão aceita
+- Sincronização experimental de posição e rotação, com avatar remoto de lobby
+- Inimigos nativos permanecem nos modos normais enquanto não houver sessão online
+- Painel de diagnóstico no jogo e instalador reversível
+
+Consulte [STATUS-TECNICO.md](STATUS-TECNICO.md) para o que foi testado e as limitações atuais.
 
 ## Como jogar
 
@@ -39,8 +39,8 @@ do jogo, cada pessoa no seu próprio PC.
 2. Cole o link no campo **URL do host**
 3. Clique **Entrar na sala**
 
-Ambos abrem o Half Sword pela Steam, vão pro Spar/Training e começam a lutar.
-O mod sincroniza posição e rotação em tempo real.
+O launcher só abre o jogo após o relay aceitar a sala. Os dois entram no lobby
+Open World da mesma sessão. O mod sincroniza posição e rotação em tempo real.
 
 ## Aviso
 
@@ -74,4 +74,4 @@ andamento.
 /////    //  //   /////   //  //   //  //
 ```
 
-**SHOKK — v2.0 PRO**
+**SHOKK — v2.1**

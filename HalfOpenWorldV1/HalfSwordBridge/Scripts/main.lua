@@ -10,8 +10,15 @@ local admin_enabled = false
 local base = os.getenv("LOCALAPPDATA")
 local online_bridge = (base or ".") .. "\\HalfSwordUE5\\Saved\\HalfSwordOnlineReal"
 local last_control_command = ""
+local consumed_openworld_session = ""
 local control_retry_count = 0
 local admin_spawns = {}
+-- Keep file-bridge polling light.  A 500 ms callback queue can survive map
+-- teardown and leave stale game-thread callbacks during UE5 renderer shutdown.
+local control_poll_interval_ms = 2000
+-- Forward declaration: Lua only closes over locals that already exist.
+-- `enter_openworld` calls this after travel, so it must be declared first.
+local wait_for_map
 
 local function describe(object)
     if not object or not object:IsValid() then return "none" end
@@ -32,31 +39,74 @@ local function is_custom_world(world)
     return world and world:IsValid() and world:GetFullName():find(map, 1, true) ~= nil
 end
 
+local function screen_notice(message, duration, key_name)
+    local world = UEHelpers.GetWorld()
+    if not world or not world:IsValid() then return end
+    local kismet = UEHelpers.GetKismetSystemLibrary()
+    if not kismet or not kismet:IsValid() then return end
+    local ok, err = pcall(function()
+        -- PrintString requires all seven UE parameters.  A stable FName lets
+        -- the panel replace itself instead of filling the screen with lines.
+        kismet:PrintString(
+            world,
+            "[HALF ONLINE] " .. message,
+            true,
+            true,
+            { R = 1.0, G = 0.72, B = 0.15, A = 1.0 },
+            duration or 5.0,
+            UEHelpers.AddFName(key_name or "HalfOnlineNotice")
+        )
+    end)
+    if not ok then
+        print("[HalfOpenWorldV1][HUD] PrintString failed: " .. tostring(err) .. "\n")
+    end
+end
+
 local function admin_log(message)
     print("[HalfOpenWorldV1][ADMIN] " .. message .. "\n")
+    screen_notice(message, 5.0, "HalfOnlineNotice")
     local controller = UEHelpers.GetPlayerController()
     if controller and controller:IsValid() then
         pcall(function() controller:ClientMessage("[OW ADMIN] " .. message) end)
     end
 end
 
-local function admin_help()
-    admin_log("Painel admin V0 - assinado: shokk")
-    admin_log("Ctrl+Num1 spawn bot proxy | Ctrl+Num2 spawn item proxy | Ctrl+Num3 limpar spawns")
-    admin_log("Ctrl+F8 entrar lobby | Ctrl+F11 voltar | Ctrl+F12 descobrir classes nativas")
-    admin_log("Spawn de bot/item fica bloqueado ate uma classe nativa valida ser confirmada para evitar T-pose/trava.")
+local function show_admin_panel()
+    screen_notice(
+        "ADMIN HOST  |  Ctrl+1: bot  |  Ctrl+2: item  |  Ctrl+3: limpar\n"
+        .. "Ctrl+F10: restaurar jogador  |  Ctrl+F11: voltar arena  |  Ctrl+F7: fechar",
+        120.0,
+        "HalfOnlineAdminPanel"
+    )
 end
 
-local function local_role()
-    local file = io.open(online_bridge .. "\\mp_role.txt", "r")
-    if not file then return "" end
-    local role = (file:read("*l") or ""):lower()
+local function hide_admin_panel()
+    screen_notice(" ", 0.01, "HalfOnlineAdminPanel")
+end
+
+local function admin_help()
+    print("[HalfOpenWorldV1][ADMIN] Painel admin V0 - assinado: shokk\n")
+    print("[HalfOpenWorldV1][ADMIN] Ctrl+1 bot | Ctrl+2 item | Ctrl+3 limpar | Ctrl+F10 jogador | Ctrl+F11 arena\n")
+end
+
+local function current_session()
+    local file = io.open(online_bridge .. "\\mp_session.txt", "r")
+    if not file then return nil end
+    local line = file:read("*l") or ""
     file:close()
-    return role
+    -- v2 <session> <role> <room> <expires> <players> openworld-v1
+    local version, session, role, room, expires, players, world_tag = line:match("^(%S+)%s+(%S+)%s+(%S+)%s+(%S+)%s+(%S+)%s+(%S+)%s+(%S+)$")
+    expires = tonumber(expires)
+    if version ~= "v2" or not session or (role ~= "host" and role ~= "client")
+        or not expires or expires < os.time() or world_tag ~= "openworld-v1" then
+        return nil
+    end
+    return { id = session, role = role, room = room, players = tonumber(players) or 0 }
 end
 
 local function is_room_admin()
-    return local_role() == "host"
+    local session = current_session()
+    return session and session.role == "host" or false
 end
 
 local function get_player_location(offset_x, offset_y, offset_z)
@@ -79,9 +129,12 @@ local function setup_proxy_mesh(actor, scale)
     local component = component_class and actor:GetComponentByClass(component_class) or nil
     if component and component:IsValid() and mesh and mesh:IsValid() then
         component:SetStaticMesh(mesh)
+    else
+        return false, "StaticMeshComponent ou SM_Block indisponivel"
     end
     actor:SetActorScale3D(scale)
     actor:SetActorEnableCollision(true)
+    return true, "ok"
 end
 
 local function spawn_admin_proxy(kind)
@@ -107,12 +160,13 @@ local function spawn_admin_proxy(kind)
     }
     local ok, actor = pcall(function() return world:SpawnActor(class, transform, {}) end)
     if ok and actor and actor:IsValid() then
+        local mesh_ok, mesh_reason
         if kind == "item" then
-            setup_proxy_mesh(actor, { X = 0.45, Y = 0.45, Z = 0.45 })
-            admin_log("Item proxy spawnado.")
+            mesh_ok, mesh_reason = setup_proxy_mesh(actor, { X = 0.45, Y = 0.45, Z = 0.45 })
+            admin_log(mesh_ok and "Item proxy spawnado." or "Item criado, mas sem malha: " .. tostring(mesh_reason))
         else
-            setup_proxy_mesh(actor, { X = 0.8, Y = 0.8, Z = 1.8 })
-            admin_log("Bot proxy spawnado.")
+            mesh_ok, mesh_reason = setup_proxy_mesh(actor, { X = 0.8, Y = 0.8, Z = 1.8 })
+            admin_log(mesh_ok and "Bot proxy spawnado." or "Bot criado, mas sem malha: " .. tostring(mesh_reason))
         end
         table.insert(admin_spawns, actor)
     else
@@ -178,6 +232,7 @@ local function open_level(level_path, label)
         end
         return false
     end
+    admin_log("Abrindo " .. label .. "...")
     print("[HalfOpenWorldV1] Opening " .. label .. " (" .. level_path .. ")\n")
     UEHelpers.GetGameplayStatics():OpenLevel(controller, UEHelpers.AddFName(level_path), true, "")
     return true
@@ -202,13 +257,23 @@ end
 
 local function handle_external_control(command)
     if command == "" or command == last_control_command then return end
-    if command == "openworld start" then
+    local action, session_id = command:match("^(openworld%s+start)%s+(%S+)$")
+    if action and session_id then
+        local session = current_session()
+        if not session or session.id ~= session_id then
+            return
+        end
+        if consumed_openworld_session == session_id then
+            last_control_command = command
+            return
+        end
         if control_retry_count == 0 then
             print("[HalfOpenWorldV1] Multiplayer lobby requested Open World start.\n")
         end
         control_retry_count = control_retry_count + 1
         if enter_openworld() then
             last_control_command = command
+            consumed_openworld_session = session_id
             control_retry_count = 0
         end
     elseif command:find("openworld return", 1, true) == 1 then
@@ -232,12 +297,18 @@ local function handle_external_control(command)
 end
 
 local function poll_external_control()
-    ExecuteWithDelay(500, function()
+    ExecuteWithDelay(control_poll_interval_ms, function()
         ExecuteInGameThread(function()
             local ok, err = pcall(function()
-                local file = io.open(online_bridge .. "\\mp_game_control.txt", "r")
+                local controller = UEHelpers.GetPlayerController()
+                if not controller or not controller:IsValid() then
+                    return
+                end
+                local file = io.open(online_bridge .. "\\mp_openworld_control.txt", "r")
                 if file then
-                    local command = (file:read("*l") or ""):lower()
+                    -- Session ids are case-sensitive URL-safe tokens; do not
+                    -- lowercase the whole control line.
+                    local command = file:read("*l") or ""
                     file:close()
                     handle_external_control(command)
                 end
@@ -288,7 +359,7 @@ local function try_native_respawn()
     if not ok then print("[HalfOpenWorldV1] Native restart failed: " .. tostring(err) .. "\n") end
 end
 
-local function wait_for_map(attempt)
+wait_for_map = function(attempt)
     ExecuteWithDelay(1000, function()
         ExecuteInGameThread(function()
             local world = UEHelpers.GetWorld()
@@ -299,7 +370,7 @@ local function wait_for_map(attempt)
                 wait_for_map(attempt + 1)
             else
                 travel_pending = false
-                print("[HalfOpenWorldV1] Map did not load within 10 seconds.\n")
+                admin_log("Mapa nao carregou em 10 segundos. Use Ctrl+F8 novamente.")
             end
         end)
     end)
@@ -319,7 +390,10 @@ end)
 
 RegisterKeyBind(Key.F9, {ModifierKey.CONTROL}, function()
     ExecuteInGameThread(function()
-        local ok, err = pcall(function() report_state("manual diagnostic") end)
+        local ok, err = pcall(function()
+            report_state("manual diagnostic")
+            admin_log("Diagnostico enviado ao log.")
+        end)
         if not ok then print("[HalfOpenWorldV1] Diagnostic failed: " .. tostring(err) .. "\n") end
     end)
 end)
@@ -328,30 +402,44 @@ RegisterKeyBind(Key.F7, {ModifierKey.CONTROL}, function()
     ExecuteInGameThread(function()
         admin_enabled = not admin_enabled
         admin_log("Painel admin " .. (admin_enabled and "ON" or "OFF"))
-        if admin_enabled then admin_help() end
+        if admin_enabled then
+            show_admin_panel()
+            admin_help()
+        else
+            hide_admin_panel()
+        end
     end)
 end)
 
-RegisterKeyBind(Key.Num1, {ModifierKey.CONTROL}, function()
+local function admin_spawn_bot()
     ExecuteInGameThread(function()
         local ok, err = pcall(function() spawn_admin_proxy("bot") end)
         if not ok then admin_log("Spawn bot falhou: " .. tostring(err)) end
     end)
-end)
+end
 
-RegisterKeyBind(Key.Num2, {ModifierKey.CONTROL}, function()
+local function admin_spawn_item()
     ExecuteInGameThread(function()
         local ok, err = pcall(function() spawn_admin_proxy("item") end)
         if not ok then admin_log("Spawn item falhou: " .. tostring(err)) end
     end)
-end)
+end
 
-RegisterKeyBind(Key.Num3, {ModifierKey.CONTROL}, function()
+local function admin_clear_spawns()
     ExecuteInGameThread(function()
         local ok, err = pcall(clear_admin_spawns)
         if not ok then admin_log("Limpar spawns falhou: " .. tostring(err)) end
     end)
-end)
+end
+
+-- NUM_ONE/TWO/THREE are UE4SS's actual numpad names.  Bind the number row as
+-- well, so the panel works on compact keyboards without a numeric keypad.
+RegisterKeyBind(Key.NUM_ONE, {ModifierKey.CONTROL}, admin_spawn_bot)
+RegisterKeyBind(Key.NUM_TWO, {ModifierKey.CONTROL}, admin_spawn_item)
+RegisterKeyBind(Key.NUM_THREE, {ModifierKey.CONTROL}, admin_clear_spawns)
+RegisterKeyBind(Key.ONE, {ModifierKey.CONTROL}, admin_spawn_bot)
+RegisterKeyBind(Key.TWO, {ModifierKey.CONTROL}, admin_spawn_item)
+RegisterKeyBind(Key.THREE, {ModifierKey.CONTROL}, admin_clear_spawns)
 
 RegisterKeyBind(Key.F12, {ModifierKey.CONTROL}, function()
     ExecuteInGameThread(function()
@@ -366,6 +454,7 @@ RegisterKeyBind(Key.F11, {ModifierKey.CONTROL}, function()
         local ok, err = pcall(function()
             attempted_world = nil
             travel_pending = false
+            admin_log("Voltando para a arena de treino...")
             report_state("before return")
             open_level(fallback_map, "Half Sword training yard")
         end)
@@ -375,8 +464,11 @@ end)
 
 -- Manual fallback: never runs outside our map.
 RegisterKeyBind(Key.F10, {ModifierKey.CONTROL}, function()
-    ExecuteInGameThread(try_native_respawn)
+    ExecuteInGameThread(function()
+        admin_log("Tentando restaurar o jogador no lobby...")
+        try_native_respawn()
+    end)
 end)
 
 poll_external_control()
-print("[HalfOpenWorldV1] Bridge loaded. Ctrl+F7 admin, Ctrl+F8 opens map, Ctrl+F9 diagnoses, Ctrl+F10 respawns, Ctrl+F11 returns, Ctrl+F12 discovers spawn classes. Multiplayer launcher can request Open World lobby.\n")
+print("[HalfOpenWorldV1] Bridge loaded. Ctrl+F7 admin, Ctrl+F8 opens map, Ctrl+F9 diagnoses, Ctrl+F10 respawns, Ctrl+F11 returns, Ctrl+F12 discovers spawn classes. Admin spawn shortcuts: Ctrl+1/2/3 or Ctrl+Numpad 1/2/3. Multiplayer launcher can request Open World lobby.\n")

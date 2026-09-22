@@ -330,6 +330,37 @@ class RealLauncher(tk.Tk):
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
 
+    def _clear_bridge_session(self) -> None:
+        """Remove only the handshake state produced by this launcher."""
+        BRIDGE_DIR.mkdir(parents=True, exist_ok=True)
+        for name in ("mp_inbound.txt", "mp_session.txt", "mp_openworld_control.txt",
+                     "mp_role.txt", "mp_room_status.json"):
+            try:
+                (BRIDGE_DIR / name).unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    def _launch_when_accepted(self, role: str) -> None:
+        """Launch only after the relay grants a fresh local session lease."""
+        def _wait() -> None:
+            deadline = time.time() + 15
+            session_file = BRIDGE_DIR / "mp_session.txt"
+            while time.time() < deadline:
+                try:
+                    fields = session_file.read_text(encoding="utf-8").strip().split()
+                    if (len(fields) == 7 and fields[0] == "v2" and fields[2] == role
+                            and fields[3] == self.room.get().strip()
+                            and int(fields[4]) >= int(time.time())):
+                        self.after(0, lambda: (self.status.set("Sala confirmada. Abrindo Half Sword..."),
+                                               self.launch_game()))
+                        return
+                except (OSError, ValueError):
+                    pass
+                time.sleep(0.2)
+            self.after(0, lambda: self.status.set(
+                "A sala nao foi confirmada. Confira link, nome da sala e se o host esta online."))
+        threading.Thread(target=_wait, daemon=True).start()
+
     def _validate(self, need_server: bool) -> tuple[str, str, str] | None:
         name    = self.name.get().strip()
         room    = self.room.get().strip()
@@ -353,6 +384,7 @@ class RealLauncher(tk.Tk):
             subprocess.run(["taskkill", "/F", "/IM", exe], capture_output=True,
                            creationflags=subprocess.CREATE_NO_WINDOW)
         self.stop()
+        self._clear_bridge_session()
 
         self.status.set("Iniciando relay...")
         self.update_idletasks()
@@ -412,7 +444,7 @@ class RealLauncher(tk.Tk):
                             self.room_status.set(f"Sala aberta — {n}")
                             self.status.set("Link criado! Envie para seu amigo.")
                             self.refresh_rooms()
-                            self.launch_game()
+                            self._launch_when_accepted("host")
                         self.after(0, _ui)
                         return
 
@@ -442,6 +474,7 @@ class RealLauncher(tk.Tk):
                            creationflags=subprocess.CREATE_NO_WINDOW)
         if self.agent and self.agent.poll() is None:
             self.agent.terminate()
+        self._clear_bridge_session()
 
         # normaliza URL
         if address.startswith("https://"):
@@ -462,7 +495,7 @@ class RealLauncher(tk.Tk):
         self.remember_room(room, address, "Convite", "RECENTE")
         self.lock_button.config(state="disabled")
         self.status.set("Conectando... O host precisa estar com a sala aberta.")
-        self.launch_game()
+        self._launch_when_accepted("client")
 
     def toggle_lock(self) -> None:
         BRIDGE_DIR.mkdir(parents=True, exist_ok=True)
@@ -524,7 +557,7 @@ class RealLauncher(tk.Tk):
         if hasattr(self, "lock_button"):
             self.lock_button.config(state="disabled")
         try:
-            (BRIDGE_DIR / "mp_room_status.json").unlink(missing_ok=True)
+            self._clear_bridge_session()
         except OSError:
             pass
         self.refresh_rooms()

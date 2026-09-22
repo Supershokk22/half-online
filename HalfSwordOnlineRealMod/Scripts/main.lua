@@ -9,7 +9,7 @@ local OPENWORLD_MAP = "/Game/HalfOpenWorld/Maps/L_World_V1"
 local OPENWORLD_PROXY_MESH = "/Game/HalfOpenWorld/Geometry/SM_Block.SM_Block"
 local base = os.getenv("LOCALAPPDATA")
 local BRIDGE = (base or ".") .. "\\HalfSwordUE5\\Saved\\HalfSwordOnlineReal"
-local state = { running = false, remotePawn = nil, botPawn = nil, spawnRequested = false, lastInbound = "", lastGameControl = "", lastStatus = 0, loadAttempts = 0, pawnStableCount = 0, lastRemotePosition = nil, lastRemoteTime = nil }
+local state = { running = false, session = "", remotePawn = nil, botPawn = nil, spawnRequested = false, lastInbound = "", lastGameControl = "", lastStatus = 0, loadAttempts = 0, pawnStableCount = 0, lastRemotePosition = nil, lastRemoteTime = nil }
 
 local function log(message) print("[" .. MOD .. "] " .. message) end
 
@@ -78,6 +78,19 @@ local function findInitializedOpponent(localPawn)
         end
     end
     return nil
+end
+
+local function activeSession()
+    local file = io.open(BRIDGE .. "\\mp_session.txt", "r")
+    if not file then return nil end
+    local line = file:read("*l") or ""
+    file:close()
+    local version, session, role, room, expires, players, tag = line:match("^(%S+)%s+(%S+)%s+(%S+)%s+(%S+)%s+(%S+)%s+(%S+)%s+(%S+)$")
+    if version ~= "v2" or not session or (role ~= "host" and role ~= "client")
+        or not tonumber(expires) or tonumber(expires) < os.time() or tag ~= "openworld-v1" then
+        return nil
+    end
+    return session
 end
 
 local function isOpenWorld()
@@ -230,37 +243,43 @@ local function applyInbound(localPawn)
     state.lastRemoteTime = now
 end
 
-local function updateLoop()
+local function stopRound(reason)
     if not state.running then return end
+    destroyActor(state.remotePawn)
+    state.running, state.session, state.remotePawn = false, "", nil
+    state.lastInbound, state.lastRemotePosition, state.lastRemoteTime = "", nil, nil
+    log(reason or "Sessao multiplayer encerrada")
+end
+
+local function updateLoop()
+    local session = activeSession()
+    if not session then
+        stopRound("Sessao multiplayer encerrada")
+        ExecuteWithDelay(500, updateLoop)
+        return
+    end
+    if not state.running or state.session ~= session then
+        if state.running then stopRound("Sessao trocada") end
+        state.running, state.session = true, session
+        state.remotePawn, state.botPawn, state.spawnRequested, state.lastInbound, state.lastGameControl = nil, nil, false, "", ""
+        state.lastRemotePosition, state.lastRemoteTime = nil, nil
+        log("Sala confirmada. Aguardando jogador remoto...")
+    end
     local controller, pawn = getPlayerPawn()
     if controller and pawn then
         writeOutbound(pawn)
         applyGameControl(pawn)
         applyInbound(pawn)
-        clearNativeSparOpponents(pawn)
+        -- Preserve the game's normal AI in Free Mode, Train and Arena.  The
+        -- previous unconditional cleanup destroyed the only enemy every
+        -- 100 ms, even when nobody was connected.  Only remove an initialized
+        -- native spar bot after a real remote avatar has been claimed.
+        if valid(state.remotePawn) and not isOpenWorld() then
+            clearNativeSparOpponents(pawn)
+        end
     end
     ExecuteWithDelay(100, updateLoop)
 end
 
-local function beginRound()
-    if state.running then return end
-    state.running = true
-    state.remotePawn, state.botPawn, state.spawnRequested, state.lastInbound, state.lastGameControl = nil, nil, false, "", ""
-    state.lastRemotePosition, state.lastRemoteTime = nil, nil
-    log("Multiplayer ativo! Aguardando avatar remoto...")
-    ExecuteWithDelay(500, function()
-        updateLoop()
-    end)
-end
-
-RegisterHook("/Script/Engine.PlayerController:ClientRestart", function() ExecuteInGameThread(function()
-    local controller, pawn = getPlayerPawn()
-    if pawn and not state.running then
-        state.pawnStableCount = state.pawnStableCount + 1
-        if state.pawnStableCount >= 2 then
-            beginRound()
-        end
-    end
-end) end)
-
-log("Mod carregado — entre na sala via menu")
+ExecuteWithDelay(1000, updateLoop)
+log("Mod carregado — aguardando sala confirmada pelo launcher")

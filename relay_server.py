@@ -17,7 +17,7 @@ from typing import Any
 
 from websockets.asyncio.server import ServerConnection, serve
 
-PROTOCOL = 1
+PROTOCOL = 2
 MAX_MESSAGE_BYTES = 2_048
 LOG = logging.getLogger("half-sword-real-relay")
 
@@ -37,6 +37,8 @@ class Room:
     host: Peer
     peers: dict[str, Peer] = field(default_factory=dict)
     locked: bool = False
+    # A new token makes files from an old room unusable after a host restarts.
+    session_id: str = field(default_factory=lambda: secrets.token_urlsafe(16))
 
 
 class Relay:
@@ -58,6 +60,7 @@ class Relay:
         await self.broadcast_room(room, {
             "type": "room.status",
             "room": room.room_id,
+            "session": room.session_id,
             "locked": room.locked,
             "players": [{"id": item.peer_id, "name": item.name, "role": item.role} for item in room.peers.values()],
         })
@@ -96,7 +99,10 @@ class Relay:
                 room.peers[peer.peer_id] = peer
             self.peers[connection] = peer
 
-        await self.send(connection, {"type": "welcome", "peer_id": peer.peer_id, "room": room_id})
+        await self.send(connection, {
+            "type": "welcome", "peer_id": peer.peer_id, "room": room_id,
+            "session": room.session_id, "players": len(room.peers),
+        })
         await self.broadcast_room(room, {"type": "peer.joined", "peer": {"id": peer.peer_id, "name": name}}, skip=peer)
         await self.broadcast_status(room)
         LOG.info("%s joined room %s as %s", name, room_id, role)
