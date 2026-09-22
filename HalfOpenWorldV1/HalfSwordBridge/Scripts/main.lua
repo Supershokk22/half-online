@@ -492,16 +492,10 @@ end
 
 -- NUM_ONE/TWO/THREE are UE4SS's actual numpad names.  Bind the number row as
 -- well, so the panel works on compact keyboards without a numeric keypad.
-RegisterKeyBind(Key.NUM_ONE, {ModifierKey.CONTROL}, admin_spawn_bot)
-RegisterKeyBind(Key.NUM_TWO, {ModifierKey.CONTROL}, admin_spawn_item)
-RegisterKeyBind(Key.NUM_THREE, {ModifierKey.CONTROL}, admin_clear_spawns)
-RegisterKeyBind(Key.ONE, {ModifierKey.CONTROL}, admin_spawn_bot)
-RegisterKeyBind(Key.TWO, {ModifierKey.CONTROL}, admin_spawn_item)
-RegisterKeyBind(Key.THREE, {ModifierKey.CONTROL}, admin_clear_spawns)
--- Numpad direct fallback: the game may consume Ctrl before UE4SS receives it.
-RegisterKeyBind(Key.NUM_ONE, admin_spawn_bot)
-RegisterKeyBind(Key.NUM_TWO, admin_spawn_item)
-RegisterKeyBind(Key.NUM_THREE, admin_clear_spawns)
+-- Spawn commands are exposed by the external launcher. Avoid registering
+-- duplicate number bindings in this shipping build: UE4SS versions differ in
+-- how they handle the same key with and without a modifier and can crash at
+-- startup. The launcher writes the same bridge commands safely.
 
 RegisterKeyBind(Key.F12, {ModifierKey.CONTROL}, function()
     ExecuteInGameThread(function()
