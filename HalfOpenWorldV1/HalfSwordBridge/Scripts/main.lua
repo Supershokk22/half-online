@@ -458,9 +458,12 @@ end)
 local function bind_movement(key, action)
     if key then RegisterKeyBind(key, {ModifierKey.CONTROL}, action) end
 end
-bind_movement(Key.SPACE, function() movement_action("jump") end)
-bind_movement(Key.X, function() movement_action("dodge") end)
-bind_movement(Key.C, function() movement_action("acro") end)
+-- Disabled by default while validating this shipping build. The functions
+-- remain available for a confirmed key enum; registering unknown key objects
+-- can crash UE4SS before the game reaches its first map.
+-- bind_movement(Key.SPACE, function() movement_action("jump") end)
+-- bind_movement(Key.X, function() movement_action("dodge") end)
+-- bind_movement(Key.C, function() movement_action("acro") end)
 
 local function admin_spawn_bot()
     ExecuteInGameThread(function()
