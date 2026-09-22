@@ -121,7 +121,11 @@ end
 
 local function is_room_admin()
     local session = current_session()
-    return session and session.role == "host" or false
+    if session then return session.role == "host" end
+    -- Local map testing has no relay lease. Keep the admin tools available in
+    -- that controlled offline map, while online clients still require a host
+    -- lease and therefore cannot spawn anything by stale files.
+    return is_custom_world(UEHelpers.GetWorld())
 end
 
 local function get_player_location(offset_x, offset_y, offset_z)
