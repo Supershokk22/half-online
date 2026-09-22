@@ -165,7 +165,15 @@ local function claimRemoteAvatar(localPawn)
 end
 
 local function destroyActor(actor)
-    if valid(actor) then pcall(function() actor:K2_DestroyActor() end) end
+    if not valid(actor) then return end
+    -- Static lobby proxies must not be destroyed from a Lua callback: UE5 can
+    -- release their render resource on the wrong thread (RenderResource.cpp).
+    if isOpenWorld() then
+        pcall(function() actor:SetActorHiddenInGame(true) end)
+        pcall(function() actor:SetActorEnableCollision(false) end)
+    else
+        pcall(function() actor:K2_DestroyActor() end)
+    end
 end
 
 local function spawnPracticeOpponent(localPawn)

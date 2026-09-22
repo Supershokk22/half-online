@@ -14,6 +14,10 @@ local last_control_command = ""
 local consumed_openworld_session = ""
 local control_retry_count = 0
 local admin_spawns = {}
+-- Runtime StaticMeshActor creation/destruction is unsafe in this shipping
+-- build (RenderResource.cpp:248). Keep the panel available, but fail closed
+-- until a native, engine-owned item class is identified.
+local safe_spawn_disabled = true
 local current_session
 -- Keep file-bridge polling light.  A 500 ms callback queue can survive map
 -- teardown and leave stale game-thread callbacks during UE5 renderer shutdown.
@@ -183,6 +187,10 @@ local function setup_proxy_mesh(actor, scale)
 end
 
 local function spawn_admin_proxy(kind)
+    if safe_spawn_disabled then
+        admin_log("Spawn temporariamente bloqueado para evitar crash do renderer; use classes nativas depois do discovery.")
+        return
+    end
     if not is_room_admin() then
         admin_log("Apenas o host/admin da sala pode spawnar.")
         return
@@ -227,7 +235,10 @@ local function clear_admin_spawns()
     local removed = 0
     for _, actor in ipairs(admin_spawns) do
         if actor and actor:IsValid() then
-            pcall(function() actor:K2_DestroyActor() end)
+            -- Never destroy a render resource from a polling/key callback.
+            -- Hide and disable collision; UE owns final cleanup at map teardown.
+            pcall(function() actor:SetActorHiddenInGame(true) end)
+            pcall(function() actor:SetActorEnableCollision(false) end)
             removed = removed + 1
         end
     end
