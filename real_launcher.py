@@ -160,7 +160,7 @@ class RealLauncher(tk.Tk):
         header = ttk.Frame(root)
         header.pack(fill="x", pady=(0, 18))
         ttk.Label(header, text="HALF ONLINE", style="Title.TLabel").pack(side="left")
-        ttk.Label(header, text="PRIVATE ARENAS  •  v2.0 PRO", style="Status.TLabel",
+        ttk.Label(header, text="PRIVATE ARENAS  |  v2.1", style="Status.TLabel",
                   font=("Segoe UI Semibold", 10)).pack(side="left", padx=(12, 0), pady=(8, 0))
         ttk.Button(header, text="Abrir Half Sword", command=self.launch_game).pack(side="right")
 
@@ -340,7 +340,7 @@ class RealLauncher(tk.Tk):
             except OSError:
                 pass
 
-    def _launch_when_accepted(self, role: str) -> None:
+    def _launch_when_accepted(self, role: str, room: str) -> None:
         """Launch only after the relay grants a fresh local session lease."""
         def _wait() -> None:
             deadline = time.time() + 15
@@ -349,7 +349,7 @@ class RealLauncher(tk.Tk):
                 try:
                     fields = session_file.read_text(encoding="utf-8").strip().split()
                     if (len(fields) == 7 and fields[0] == "v2" and fields[2] == role
-                            and fields[3] == self.room.get().strip()
+                            and fields[3] == room
                             and int(fields[4]) >= int(time.time())):
                         self.after(0, lambda: (self.status.set("Sala confirmada. Abrindo Half Sword..."),
                                                self.launch_game()))
@@ -367,6 +367,13 @@ class RealLauncher(tk.Tk):
         address = self.server.get().strip()
         if not name or not room:
             messagebox.showwarning("Dados incompletos", "Informe seu nome e a sala.")
+            return None
+        if any(char.isspace() for char in room) or len(room) > 32:
+            messagebox.showwarning("Nome de sala invalido",
+                                   "Use uma palavra sem espacos, com no maximo 32 caracteres.")
+            return None
+        if len(name) > 24:
+            messagebox.showwarning("Nome invalido", "Seu nome pode ter no maximo 24 caracteres.")
             return None
         if need_server and not address:
             messagebox.showwarning("URL ausente", "Cole o link que o host enviou.")
@@ -444,7 +451,7 @@ class RealLauncher(tk.Tk):
                             self.room_status.set(f"Sala aberta — {n}")
                             self.status.set("Link criado! Envie para seu amigo.")
                             self.refresh_rooms()
-                            self._launch_when_accepted("host")
+                            self._launch_when_accepted("host", room)
                         self.after(0, _ui)
                         return
 
@@ -495,7 +502,7 @@ class RealLauncher(tk.Tk):
         self.remember_room(room, address, "Convite", "RECENTE")
         self.lock_button.config(state="disabled")
         self.status.set("Conectando... O host precisa estar com a sala aberta.")
-        self._launch_when_accepted("client")
+        self._launch_when_accepted("client", room)
 
     def toggle_lock(self) -> None:
         BRIDGE_DIR.mkdir(parents=True, exist_ok=True)
