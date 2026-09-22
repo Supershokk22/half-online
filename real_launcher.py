@@ -166,6 +166,7 @@ class RealLauncher(tk.Tk):
         ttk.Label(header, text="PRIVATE ARENAS  |  v2.1", style="Status.TLabel",
                   font=("Segoe UI Semibold", 10)).pack(side="left", padx=(12, 0), pady=(8, 0))
         ttk.Button(header, text="Abrir Half Sword", command=self.launch_game).pack(side="right")
+        ttk.Button(header, text="Ocultar painel", command=self.iconify).pack(side="right", padx=(0, 8))
         ttk.Label(header, text="Painel externo ativo", style="Status.TLabel").pack(side="right", padx=14)
 
         body = ttk.Frame(root)
