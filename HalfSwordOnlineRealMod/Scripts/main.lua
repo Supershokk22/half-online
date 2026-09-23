@@ -216,6 +216,18 @@ local function clearNativeSparOpponents(localPawn)
     if removed > 0 then log("Bots removidos: " .. removed) end
 end
 
+local function readInboundPos()
+    -- Read remote position WITHOUT the dedup of parseInbound(); a one-shot
+    -- "goto player" must always see the freshest inbound state.
+    local file = io.open(BRIDGE .. "\\mp_inbound.txt", "r")
+    if not file then return nil end
+    local line = file:read("*l") or ""
+    file:close()
+    local x, y, z, pitch, yaw, roll = line:match("^state%s+([%-%d%.]+)%s+([%-%d%.]+)%s+([%-%d%.]+)%s+([%-%d%.]+)%s+([%-%d%.]+)%s+([%-%d%.]+)$")
+    if not x then return nil end
+    return { tonumber(x), tonumber(y), tonumber(z), tonumber(pitch), tonumber(yaw), tonumber(roll) }
+end
+
 local function applyGameControl(localPawn)
     local file = io.open(BRIDGE .. "\\mp_game_control.txt", "r")
     if not file then return end
@@ -226,6 +238,31 @@ local function applyGameControl(localPawn)
     if command == "remote remove" then
         destroyActor(state.remotePawn); state.remotePawn = nil; state.spawnRequested = false; state.lastInbound = ""
         log("Adversario saiu da sala")
+    elseif command:match("^goto player") then
+        -- Drag the local pawn to the remote partner. Suffixes re-trigger.
+        local packet = readInboundPos()
+        if not packet then
+            log("Goto: sem posicao do parceiro ainda")
+            return
+        end
+        local ok, err = pcall(function()
+            local forward = localPawn:GetActorForwardVector()
+            local target = {
+                X = packet[1] + forward.X * 140,
+                Y = packet[2] + forward.Y * 140,
+                Z = packet[3] + 10,
+            }
+            localPawn:K2_SetActorLocationAndRotation(
+                target,
+                { Pitch = packet[4], Yaw = packet[5], Roll = packet[6] },
+                true, {}, false
+            )
+        end)
+        if ok then
+            log("Goto: arrastado para " .. packet[1] .. " " .. packet[2] .. " " .. packet[3])
+        else
+            log("Goto falhou: " .. tostring(err))
+        end
     elseif command == "spar clear" then
         clearNativeSparOpponents(localPawn)
     end

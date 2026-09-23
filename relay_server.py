@@ -18,7 +18,7 @@ from typing import Any
 from websockets.asyncio.server import ServerConnection, serve
 
 PROTOCOL = 2
-MAX_MESSAGE_BYTES = 2_048
+MAX_MESSAGE_BYTES = 1_048_576
 LOG = logging.getLogger("half-sword-real-relay")
 
 
@@ -132,6 +132,25 @@ class Relay:
                     await self.broadcast_room(room, {"type": "game.control", "command": command})
                 return
             await self.send(peer.connection, {"type": "error", "code": "unknown_admin_action"})
+            return
+        if message_type == "chat":
+            # Real-time text between room peers (used for AI-to-AI handshake
+            # and error exchange; the game ignores it entirely).
+            if not room:
+                await self.send(peer.connection, {"type": "error", "code": "invalid_message"})
+                return
+            text = str(message.get("text", "")).strip()[:400]
+            if not text:
+                return
+            await self.broadcast_room(room, {"type": "chat", "from": peer.name, "text": text}, skip=peer)
+            return
+        if message_type in {"file_sync", "sync_request"}:
+            # Live repo sync between the two peers (host watches + pushes,
+            # client applies). The game never sees these frames.
+            if not room:
+                await self.send(peer.connection, {"type": "error", "code": "invalid_message"})
+                return
+            await self.broadcast_room(room, message, skip=peer)
             return
         if message_type != "snapshot" or not self.valid_snapshot(message):
             await self.send(peer.connection, {"type": "error", "code": "invalid_message"})
